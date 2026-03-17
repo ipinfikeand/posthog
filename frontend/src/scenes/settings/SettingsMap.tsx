@@ -18,7 +18,6 @@ import { FEATURE_SUPPORT } from 'lib/components/SupportedPlatforms/featureSuppor
 import { OrganizationMembershipLevel } from 'lib/constants'
 import { BounceRateDurationSetting } from 'scenes/settings/environment/BounceRateDuration'
 import { BounceRatePageViewModeSetting } from 'scenes/settings/environment/BounceRatePageViewMode'
-import { CookielessServerHashModeSetting } from 'scenes/settings/environment/CookielessServerHashMode'
 import { CustomChannelTypes } from 'scenes/settings/environment/CustomChannelTypes'
 import { DeadClicksAutocaptureSettings } from 'scenes/settings/environment/DeadClicksAutocaptureSettings'
 import { MaxChangelogSettings } from 'scenes/settings/environment/MaxChangelogSettings'
@@ -1166,15 +1165,6 @@ export const SETTINGS_MAP: SettingSection[] = [
                 docsUrl: 'https://posthog.com/docs/data/channel-type',
                 component: <CustomChannelTypes />,
                 keywords: ['utm', 'source', 'medium', 'referrer', 'attribution'],
-            },
-            {
-                id: 'cookieless-server-hash-mode',
-                title: 'Cookieless server hash mode',
-                description:
-                    'Enable cookieless tracking using a privacy-preserving hash to count unique users without cookies. You must enable this here before enabling cookieless in posthog-js.',
-                docsUrl: 'https://posthog.com/tutorials/cookieless-tracking',
-                component: <CookielessServerHashModeSetting />,
-                keywords: ['cookie', 'privacy', 'gdpr', 'tracking', 'consent'],
             },
             {
                 id: 'bounce-rate-duration',
