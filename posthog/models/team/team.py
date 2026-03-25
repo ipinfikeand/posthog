@@ -234,8 +234,6 @@ class WeekStartDay(models.IntegerChoices):
 
 
 class CookielessServerHashMode(models.IntegerChoices):
-    DISABLED = 0, "Disabled"
-    STATELESS = 1, "Stateless"
     STATEFUL = 2, "Stateful"
 
 
