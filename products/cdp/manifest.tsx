@@ -17,12 +17,21 @@ export const manifest: ProductManifest = {
             defaultDocsPath: '/docs/cdp/transformations',
             iconType: 'data_pipeline',
         },
+        EventFiltering: {
+            import: () => import('../../frontend/src/scenes/data-pipelines/event-filtering/EventFilterScene'),
+            projectBased: true,
+            name: 'Event filtering',
+            description: 'Drop events at ingestion time based on event metadata.',
+            iconType: 'data_pipeline',
+        },
     },
     routes: {
         '/transformations': ['Transformations', 'transformations'],
+        '/event-filtering': ['EventFiltering', 'eventFiltering'],
     },
     urls: {
         transformations: (): string => '/transformations',
+        eventFiltering: (): string => '/event-filtering',
     },
     treeItemsNew: [
         {
@@ -90,6 +99,15 @@ export const manifest: ProductManifest = {
             href: urls.transformations(),
             sceneKey: 'Transformations',
             sceneKeys: ['Transformations'],
+        },
+        {
+            path: 'Event filtering',
+            category: 'Pipeline',
+            type: 'event_filter',
+            iconType: 'data_pipeline_metadata',
+            href: urls.eventFiltering(),
+            sceneKey: 'EventFiltering',
+            sceneKeys: ['EventFiltering'],
         },
         {
             path: `Destinations`,
