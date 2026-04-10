@@ -270,7 +270,7 @@ export const productConfiguration: Record<string, any> = {
     },
     EventFiltering: {
         projectBased: true,
-        name: 'Event filtering',
+        name: 'Event ingestion filtering',
         description: 'Drop events at ingestion time based on event metadata.',
         iconType: 'data_pipeline',
     },
@@ -1795,7 +1795,7 @@ export const getTreeItemsMetadata = (): FileSystemImport[] => [
         sceneKeys: ['EventDefinition', 'EventDefinitions'],
     },
     {
-        path: 'Event filtering',
+        path: 'Event ingestion filtering',
         category: 'Pipeline',
         type: 'event_filter',
         iconType: 'data_pipeline_metadata',

@@ -625,7 +625,7 @@ export const sceneConfigurations: Record<Scene | string, SceneConfig> = {
     },
     [Scene.EventFiltering]: {
         projectBased: true,
-        name: 'Event filtering',
+        name: 'Event ingestion filtering',
         description: 'Drop events at ingestion time based on event metadata.',
         iconType: 'data_pipeline',
     },
