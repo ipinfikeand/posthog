@@ -94,14 +94,17 @@ jobs:
                   RUN_ID: ${{ steps.find-run.outputs.run_id }}
               run: |
                   gh run download "$RUN_ID" --pattern "timing_data-*" --dir timing_artifacts
+                  gh run download "$RUN_ID" --pattern "junit-results-backend-*" --dir junit_artifacts
 
             - name: Process timing data
               run: |
-                  # Process each segment separately, then merge
+                  # Process each segment separately with migration tax correction, then merge.
+                  # Core/Temporal use JUnit for precise carrier detection.
+                  # Products lack JUnit artifacts, so use statistical detection (--shard-count).
                   uv run .github/scripts/optimize_test_durations.py timing_artifacts /tmp/core_durations \
-                      --segment Core
+                      --segment Core --junit-dir junit_artifacts
                   uv run .github/scripts/optimize_test_durations.py timing_artifacts /tmp/temporal_durations \
-                      --segment Temporal
+                      --segment Temporal --junit-dir junit_artifacts
                   uv run .github/scripts/optimize_test_durations.py timing_artifacts /tmp/products_durations \
                       --segment Products
 
@@ -118,7 +121,7 @@ jobs:
                       f.write('\n')
                   print(f'Merged {len(durations)} tests')
                   "
-                  rm -rf timing_artifacts /tmp/core_durations /tmp/temporal_durations /tmp/products_durations
+                  rm -rf timing_artifacts junit_artifacts /tmp/core_durations /tmp/temporal_durations /tmp/products_durations
 
             - name: Check for changes
               id: check-changes
