@@ -560,7 +560,9 @@ layer = "modules"
 
 [[interfaces]]
 expose = [
+    "backend\\.facade.*",
     "backend\\.models.*",
+    "backend\\.presentation\\.views.*",
     "backend\\.property_access_control.*",
 ]
 from = [
