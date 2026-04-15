@@ -270,6 +270,14 @@ class HogQLQueryExecutor:
 
     @tracer.start_as_current_span("HogQLQueryExecutor.__post_init__")
     def __post_init__(self):
+        # If user wasn't passed explicitly, try to get it from the current query runner context.
+        # This ensures property-level access control works even when individual query runners
+        # don't pass user= to execute_hogql_query().
+        if self.user is None:
+            from posthog.hogql_queries.query_runner import current_query_user
+
+            self.user = current_query_user.get(None)
+
         if self.context is self.__uninitialized_context:
             self.context = HogQLContext(team_id=self.team.pk, user=self.user)
 

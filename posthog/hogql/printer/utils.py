@@ -92,9 +92,18 @@ def prepare_ast_for_printing(
     # FieldType.get_child() can block access to restricted properties during resolution.
     if context.team_id is not None and context.restricted_properties is None:
         with context.timings.measure("load_restricted_properties"):
+            # If context.user is None (common when query runners don't explicitly pass
+            # user= to execute_hogql_query), fall back to the ContextVar set by
+            # QueryRunner.calculate().
+            effective_user = context.user
+            if effective_user is None:
+                from posthog.hogql_queries.query_runner import current_query_user
+
+                effective_user = current_query_user.get(None)
+
             context.restricted_properties = get_restricted_properties_for_team(
                 team_id=context.team_id,
-                user=context.user,
+                user=effective_user,
             )
 
     if context.modifiers.inCohortVia == InCohortVia.LEFTJOIN_CONJOINED:

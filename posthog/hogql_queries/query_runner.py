@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from time import perf_counter
@@ -1029,6 +1030,11 @@ R = TypeVar("R", bound=BaseModel)
 # Unfortunately inheritance is also not a thing here, because we lose this info in the schema.ts->.json->.py journey
 CR = TypeVar("CR", bound=GenericCachedQueryResponse)
 
+# Stores the current query runner's user during calculate() so that HogQL execution
+# can resolve property-level access control even when individual query runners don't
+# explicitly pass user= to execute_hogql_query().
+current_query_user: ContextVar[Optional["User"]] = ContextVar("current_query_user", default=None)
+
 
 class QueryRunner(ABC, Generic[Q, R, CR]):
     query: Q
@@ -1119,7 +1125,11 @@ class QueryRunner(ABC, Generic[Q, R, CR]):
 
     def calculate(self) -> R:
         self.validate()
-        return self._calculate()
+        token = current_query_user.set(self.user)
+        try:
+            return self._calculate()
+        finally:
+            current_query_user.reset(token)
 
     def validate(self) -> None:
         run_validation_rules(self.validators(), self.validation_context)
@@ -1955,10 +1965,14 @@ class AnalyticsQueryRunner(QueryRunner, Generic[AR]):
     """
 
     def calculate(self) -> AR:
-        response = super().calculate()
-        if not self.modifiers.timings:
-            response.timings = None
-        return response
+        token = current_query_user.set(self.user)
+        try:
+            response = super().calculate()
+            if not self.modifiers.timings:
+                response.timings = None
+            return response
+        finally:
+            current_query_user.reset(token)
 
 
 class QueryRunnerWithHogQLContext(AnalyticsQueryRunner[AR]):
@@ -1973,6 +1987,14 @@ class QueryRunnerWithHogQLContext(AnalyticsQueryRunner[AR]):
         # so we'll reuse this database for the query once it eventually runs
         self.database = Database.create_for(team=self.team, user=self.user)
         self.hogql_context = HogQLContext(team_id=self.team.pk, database=self.database, user=self.user)
+
+    def calculate(self) -> AR:
+        # Sync user into the HogQL context before running the query.
+        # self.user is often set late (by run()) after __init__ has already
+        # created the context with user=None.
+        if self.user is not None and self.hogql_context.user is None:
+            self.hogql_context.user = self.user
+        return super().calculate()
 
 
 ### START OF BACKWARDS COMPATIBILITY CODE
