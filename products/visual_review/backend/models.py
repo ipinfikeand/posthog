@@ -292,6 +292,9 @@ class ToleratedHash(models.Model):
     baseline_hash = models.CharField(max_length=128)
     alternate_hash = models.CharField(max_length=128)
 
+    # Enables Hamming-distance matching for drifted-but-similar renders
+    alternate_phash = models.CharField(max_length=16, blank=True, default="")
+
     reason = models.CharField(
         max_length=20,
         choices=[(r.value, r.value) for r in ToleratedReason],

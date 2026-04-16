@@ -15,6 +15,7 @@ import structlog
 from .diff import compute_diff
 from .facade.enums import ClassificationReason, SnapshotResult, ToleratedReason
 from .models import RunSnapshot, ToleratedHash
+from .phash import HAMMING_TOLERANCE_BITS, compute_phash, hamming_distance
 from .ssim import compute_ssim
 
 logger = structlog.get_logger(__name__)
@@ -63,6 +64,34 @@ def _store_diff(snapshot: RunSnapshot, result, *, ssim_score: float | None = Non
     )
 
 
+def _match_tolerated_phash(snapshot: RunSnapshot, current_phash: str) -> bool:
+    """Reclassify snapshot as UNCHANGED if any stored alternate_phash is within
+    Hamming tolerance of the current image. Returns True on a hit.
+    """
+    candidates = ToleratedHash.objects.filter(
+        repo_id=snapshot.run.repo_id,
+        identifier=snapshot.identifier,
+        baseline_hash=snapshot.baseline_hash,
+    ).exclude(alternate_phash="")
+
+    for candidate in candidates:
+        distance = hamming_distance(current_phash, candidate.alternate_phash)
+        if distance <= HAMMING_TOLERANCE_BITS:
+            snapshot.result = SnapshotResult.UNCHANGED
+            snapshot.classification_reason = ClassificationReason.TOLERATED_HASH
+            snapshot.tolerated_hash_match = candidate
+            snapshot.save(update_fields=["result", "classification_reason", "tolerated_hash_match"])
+            logger.info(
+                "visual_review.diff_tolerated_by_phash",
+                snapshot_id=str(snapshot.id),
+                identifier=snapshot.identifier,
+                hamming_distance=distance,
+                tolerated_hash_id=str(candidate.id),
+            )
+            return True
+    return False
+
+
 def _diff_snapshot(snapshot: RunSnapshot) -> None:
     """
     Compute diff between baseline and current artifact.
@@ -91,6 +120,18 @@ def _diff_snapshot(snapshot: RunSnapshot) -> None:
             has_baseline=baseline_bytes is not None,
             has_current=current_bytes is not None,
         )
+        return
+
+    try:
+        current_phash = compute_phash(current_bytes)
+    except Exception:
+        current_phash = ""
+
+    # Perceptual-hash tolerance: before expensive pixel/SSIM diff, check
+    # whether current image is within Hamming threshold of any previously
+    # tolerated alternate for this (identifier, baseline). Drift-tolerant
+    # cache for renders that shift slightly run-to-run.
+    if current_phash and _match_tolerated_phash(snapshot, current_phash):
         return
 
     result = compute_diff(baseline_bytes, current_bytes)
@@ -133,7 +174,9 @@ def _diff_snapshot(snapshot: RunSnapshot) -> None:
         ssim_dissimilarity=round(ssim_dissimilarity, 4),
     )
 
-    # Auto-populate tolerance cache so future runs skip diffing for this hash
+    # Auto-populate tolerance cache so future runs skip diffing for this hash.
+    # Also store the perceptual hash so drifted-but-similar renders on later
+    # runs can short-circuit via Hamming match (not just exact current_hash).
     ToleratedHash.objects.get_or_create(
         repo_id=snapshot.run.repo_id,
         identifier=snapshot.identifier,
@@ -143,6 +186,7 @@ def _diff_snapshot(snapshot: RunSnapshot) -> None:
             "team_id": snapshot.team_id,
             "reason": ToleratedReason.AUTO_THRESHOLD,
             "source_run": snapshot.run,
+            "alternate_phash": current_phash,
         },
     )
 
