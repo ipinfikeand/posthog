@@ -22,9 +22,11 @@ Requires `gh` CLI authenticated and ANTHROPIC_API_KEY in env.
 
 import json
 import time
+import uuid
 import argparse
 import tempfile
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -307,22 +309,19 @@ class Pipeline:
             return True, f"T0 auto-approve: {summary}"
         return True, summary
 
-    def _create_worktree(self) -> Path | None:
-        """Create a git worktree at the PR head for LLM exploration.
+    @contextmanager
+    def _pr_head_worktree(self):
+        """Yield a detached worktree at the PR head, or None on failure.
 
         The LLM needs to see the codebase as it will look after the PR
         lands — including code from parent PRs in a stack. The main
         checkout is always master (for script security), so we create a
         separate worktree at head_sha for the LLM's Read/Grep/Glob tools.
         """
-        head_sha = self.pr.head_sha
-        worktree_dir = Path(tempfile.mkdtemp(prefix=f"pr-review-{self.pr_number}-"))
-        # mkdtemp creates the dir; git worktree add needs it to not exist
-        worktree_dir.rmdir()
-
+        worktree_dir = Path(tempfile.gettempdir()) / f"pr-review-{self.pr_number}-{uuid.uuid4().hex[:8]}"
         try:
             result = subprocess.run(
-                ["git", "worktree", "add", str(worktree_dir), head_sha, "--detach"],
+                ["git", "worktree", "add", str(worktree_dir), self.pr.head_sha, "--detach"],
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -330,32 +329,31 @@ class Pipeline:
             )
             if result.returncode != 0:
                 print(_warn(f"Worktree creation failed, falling back to master: {result.stderr.strip()}"))
-                return None
-            print(_dim(f"  Worktree at PR head: {worktree_dir}"))
-            return worktree_dir
+                worktree_dir = None
+            else:
+                print(_dim(f"  Worktree at PR head: {worktree_dir}"))
         except subprocess.TimeoutExpired:
             print(_warn("Worktree creation timed out, falling back to master"))
-            return None
+            worktree_dir = None
 
-    def _cleanup_worktree(self, worktree_dir: Path | None) -> None:
-        """Remove the temporary worktree."""
-        if worktree_dir is None or not worktree_dir.exists():
-            return
         try:
-            subprocess.run(
-                ["git", "worktree", "remove", "--force", str(worktree_dir)],
-                capture_output=True,
-                timeout=30,
-                cwd=REPO_ROOT,
-            )
-        except Exception:
-            pass
+            yield worktree_dir
+        finally:
+            if worktree_dir is not None and worktree_dir.exists():
+                try:
+                    subprocess.run(
+                        ["git", "worktree", "remove", "--force", str(worktree_dir)],
+                        capture_output=True,
+                        timeout=30,
+                        cwd=REPO_ROOT,
+                    )
+                except Exception:
+                    pass
 
     def _llm_review(self, gate_verdict: str) -> None:
         print(f"\n{_bold('LLM Review')}")
 
-        explore_root = self._create_worktree()
-        try:
+        with self._pr_head_worktree() as explore_root:
             reviewer = Reviewer(REPO_ROOT, explore_root=explore_root, verbose=self.verbose)
 
             gate_context = {
@@ -414,8 +412,6 @@ class Pipeline:
                 print(f"\n{_warn('ESCALATE')} — needs human review")
 
             self._capture_review_completed(gate_verdict, llm_verdict)
-        finally:
-            self._cleanup_worktree(explore_root)
 
     def _capture_review_completed(self, gate_verdict: str, llm_verdict: str) -> None:
         """Send a stamphog_review_completed event with all verdict data."""
