@@ -64,43 +64,6 @@ def _store_diff(snapshot: RunSnapshot, result, *, ssim_score: float | None = Non
     )
 
 
-def _match_baseline_phash(snapshot: RunSnapshot, current_phash: str, baseline_phash: str) -> bool:
-    """Reclassify snapshot as UNCHANGED if current image is within Hamming
-    tolerance of the baseline itself. Catches drifted-but-similar renders on
-    their first encounter, before any tolerated alternate has been recorded.
-    Returns True on a hit.
-    """
-    distance = hamming_distance(current_phash, baseline_phash)
-    if distance > HAMMING_TOLERANCE_BITS:
-        return False
-
-    snapshot.result = SnapshotResult.UNCHANGED
-    snapshot.classification_reason = ClassificationReason.BASELINE_PHASH
-    snapshot.save(update_fields=["result", "classification_reason"])
-    logger.info(
-        "visual_review.diff_tolerated_by_baseline_phash",
-        snapshot_id=str(snapshot.id),
-        identifier=snapshot.identifier,
-        hamming_distance=distance,
-    )
-
-    # Seed a tolerated row so future runs short-circuit via the cheaper
-    # stored-alternate check instead of recomputing the baseline phash.
-    ToleratedHash.objects.get_or_create(
-        repo_id=snapshot.run.repo_id,
-        identifier=snapshot.identifier,
-        baseline_hash=snapshot.baseline_hash,
-        alternate_hash=snapshot.current_hash,
-        defaults={
-            "team_id": snapshot.team_id,
-            "reason": ToleratedReason.AUTO_THRESHOLD,
-            "source_run": snapshot.run,
-            "alternate_phash": current_phash,
-        },
-    )
-    return True
-
-
 def _match_tolerated_phash(snapshot: RunSnapshot, current_phash: str) -> bool:
     """Reclassify snapshot as UNCHANGED if any stored alternate_phash is within
     Hamming tolerance of the current image. Returns True on a hit.
@@ -164,17 +127,10 @@ def _diff_snapshot(snapshot: RunSnapshot) -> None:
     except Exception:
         current_phash = ""
 
-    try:
-        baseline_phash = compute_phash(baseline_bytes) if current_phash else ""
-    except Exception:
-        baseline_phash = ""
-
     # Perceptual-hash tolerance: before expensive pixel/SSIM diff, check
-    # whether the current image is within Hamming threshold of the baseline
-    # itself (catches first-time drift) or of any previously tolerated
-    # alternate for this (identifier, baseline) (faster cache on repeat runs).
-    if baseline_phash and _match_baseline_phash(snapshot, current_phash, baseline_phash):
-        return
+    # whether current image is within Hamming threshold of any previously
+    # tolerated alternate for this (identifier, baseline). Drift-tolerant
+    # cache for renders that shift slightly run-to-run.
     if current_phash and _match_tolerated_phash(snapshot, current_phash):
         return
 
