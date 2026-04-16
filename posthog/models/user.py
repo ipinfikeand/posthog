@@ -47,6 +47,9 @@ class Notifications(TypedDict, total=False):
     organization_member_join_email_disabled: dict[
         str, bool
     ]  # Maps organization ID (str) to disabled status (True = do not email when a new member joins)
+    pipeline_notifications_disabled: dict[
+        str, bool
+    ]  # Maps pipeline ID (e.g. "hog_function:<uuid>", "plugin_config:<id>", "batch_export:<uuid>") to disabled status (True = do not email for this pipeline)
 
 
 NOTIFICATION_DEFAULTS: Notifications = {
@@ -61,6 +64,7 @@ NOTIFICATION_DEFAULTS: Notifications = {
     "materialized_view_sync_failed": False,  # Materialized view failure disabled by default
     "web_analytics_weekly_digest": True,  # Web analytics weekly digest enabled by default
     "organization_member_join_email_disabled": {},  # No per-org opt-out until user configures
+    "pipeline_notifications_disabled": {},  # No per-pipeline opt-out until user configures
 }
 
 # We don't need the following attributes in most cases, so we defer them by default
