@@ -66,6 +66,7 @@ class ClassificationReason(StrEnum):
 
     EXACT = "exact"  # Hash matches baseline
     TOLERATED_HASH = "tolerated_hash"  # Matched a known tolerated alternate
+    BASELINE_PHASH = "baseline_phash"  # Perceptually within Hamming tolerance of baseline itself
     BELOW_THRESHOLD = "below_threshold"  # Diffed this run, below pixel/SSIM threshold
 
 

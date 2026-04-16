@@ -154,6 +154,65 @@ class TestDiffSnapshotPhashShortCircuit:
         assert snapshot.classification_reason == ClassificationReason.TOLERATED_HASH
         assert snapshot.tolerated_hash_match_id == tolerated.id
 
+    def test_short_circuits_on_baseline_phash_match_without_stored_alternate(self, repo, mocker):
+        """First-encounter drift: no tolerated row exists yet, but current is
+        within Hamming tolerance of the baseline itself. Snapshot should be
+        reclassified UNCHANGED with reason=BASELINE_PHASH, compute_diff should
+        not run, and a tolerated row should be seeded for future runs."""
+        snapshot, baseline_bytes, drifted_bytes = self._setup_snapshot(repo)
+
+        assert not ToleratedHash.objects.filter(
+            repo=repo, identifier=snapshot.identifier, baseline_hash=snapshot.baseline_hash
+        ).exists()
+
+        mocker.patch(
+            "products.visual_review.backend.logic.read_artifact_bytes",
+            side_effect=lambda _repo_id, content_hash: (
+                baseline_bytes if content_hash == "baseline_sha" else drifted_bytes
+            ),
+        )
+        compute_diff_mock = mocker.patch("products.visual_review.backend.diffing.compute_diff")
+
+        _diff_snapshot(snapshot)
+
+        compute_diff_mock.assert_not_called()
+        snapshot.refresh_from_db()
+        assert snapshot.result == SnapshotResult.UNCHANGED
+        assert snapshot.classification_reason == ClassificationReason.BASELINE_PHASH
+        assert snapshot.tolerated_hash_match_id is None
+
+        seeded = ToleratedHash.objects.get(
+            repo=repo,
+            identifier=snapshot.identifier,
+            baseline_hash=snapshot.baseline_hash,
+            alternate_hash=snapshot.current_hash,
+        )
+        assert seeded.alternate_phash == compute_phash(drifted_bytes)
+
+    def test_baseline_phash_match_skipped_when_distant(self, repo, mocker):
+        """Distant renders should not trigger the baseline-phash short-circuit
+        and should fall through to the normal diff path."""
+        snapshot, baseline_bytes, _ = self._setup_snapshot(repo)
+        distant_bytes = _render_card(background=(20, 20, 180), shift=40)
+
+        mocker.patch(
+            "products.visual_review.backend.logic.read_artifact_bytes",
+            side_effect=lambda _repo_id, content_hash: (
+                baseline_bytes if content_hash == "baseline_sha" else distant_bytes
+            ),
+        )
+        mocker.patch(
+            "products.visual_review.backend.diffing.compute_diff",
+            return_value=mocker.Mock(diff_percentage=50.0, diff_pixel_count=1000),
+        )
+        mocker.patch("products.visual_review.backend.diffing._store_diff")
+
+        _diff_snapshot(snapshot)
+
+        snapshot.refresh_from_db()
+        assert snapshot.result == SnapshotResult.CHANGED
+        assert snapshot.classification_reason != ClassificationReason.BASELINE_PHASH
+
     def test_falls_through_when_phash_outside_tolerance(self, repo, mocker):
         snapshot, baseline_bytes, _ = self._setup_snapshot(repo)
         distant_bytes = _render_card(background=(20, 20, 180), shift=40)
