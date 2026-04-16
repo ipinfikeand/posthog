@@ -23,6 +23,8 @@ Requires `gh` CLI authenticated and ANTHROPIC_API_KEY in env.
 import json
 import time
 import argparse
+import tempfile
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -305,66 +307,115 @@ class Pipeline:
             return True, f"T0 auto-approve: {summary}"
         return True, summary
 
+    def _create_worktree(self) -> Path | None:
+        """Create a git worktree at the PR head for LLM exploration.
+
+        The LLM needs to see the codebase as it will look after the PR
+        lands — including code from parent PRs in a stack. The main
+        checkout is always master (for script security), so we create a
+        separate worktree at head_sha for the LLM's Read/Grep/Glob tools.
+        """
+        head_sha = self.pr.head_sha
+        worktree_dir = Path(tempfile.mkdtemp(prefix=f"pr-review-{self.pr_number}-"))
+        # mkdtemp creates the dir; git worktree add needs it to not exist
+        worktree_dir.rmdir()
+
+        try:
+            result = subprocess.run(
+                ["git", "worktree", "add", str(worktree_dir), head_sha, "--detach"],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                cwd=REPO_ROOT,
+            )
+            if result.returncode != 0:
+                print(_warn(f"Worktree creation failed, falling back to master: {result.stderr.strip()}"))
+                return None
+            print(_dim(f"  Worktree at PR head: {worktree_dir}"))
+            return worktree_dir
+        except subprocess.TimeoutExpired:
+            print(_warn("Worktree creation timed out, falling back to master"))
+            return None
+
+    def _cleanup_worktree(self, worktree_dir: Path | None) -> None:
+        """Remove the temporary worktree."""
+        if worktree_dir is None or not worktree_dir.exists():
+            return
+        try:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_dir)],
+                capture_output=True,
+                timeout=30,
+                cwd=REPO_ROOT,
+            )
+        except Exception:
+            pass
+
     def _llm_review(self, gate_verdict: str) -> None:
         print(f"\n{_bold('LLM Review')}")
-        reviewer = Reviewer(REPO_ROOT, verbose=self.verbose)
 
-        gate_context = {
-            "gate_verdict": gate_verdict,
-            "gates": [{"gate": g.gate, "passed": g.passed, "message": g.message} for g in self.gate_results],
-        }
+        explore_root = self._create_worktree()
+        try:
+            reviewer = Reviewer(REPO_ROOT, explore_root=explore_root, verbose=self.verbose)
 
-        print(_dim("  Calling reviewer..."))
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                self.reviewer_output = reviewer.review(
-                    self.pr,
-                    self.classification,
-                    gate_context,
-                )
-                break
-            except Exception as e:
-                if attempt < max_retries - 1:
-                    wait = 2 ** (attempt + 1)
-                    print(_warn(f"Reviewer failed (attempt {attempt + 1}/{max_retries}): {e}"))
-                    print(_dim(f"  Retrying in {wait}s..."))
-                    time.sleep(wait)
-                else:
-                    print(_fail(f"Reviewer failed after {max_retries} attempts: {e}"))
-                    self.reviewer_output = {
-                        "verdict": "ESCALATE",
-                        "reasoning": f"Review agent failed after {max_retries} attempts — needs human review.",
-                        "risk": "unknown",
-                        "issues": [str(e)],
-                    }
+            gate_context = {
+                "gate_verdict": gate_verdict,
+                "gates": [{"gate": g.gate, "passed": g.passed, "message": g.message} for g in self.gate_results],
+            }
 
-        llm_verdict = self.reviewer_output.get("verdict", "UNKNOWN")
-        print(f"  Verdict: {llm_verdict}")
-        print(f"  Reasoning: {self.reviewer_output.get('reasoning', '?')}")
+            print(_dim("  Calling reviewer..."))
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self.reviewer_output = reviewer.review(
+                        self.pr,
+                        self.classification,
+                        gate_context,
+                    )
+                    break
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        wait = 2 ** (attempt + 1)
+                        print(_warn(f"Reviewer failed (attempt {attempt + 1}/{max_retries}): {e}"))
+                        print(_dim(f"  Retrying in {wait}s..."))
+                        time.sleep(wait)
+                    else:
+                        print(_fail(f"Reviewer failed after {max_retries} attempts: {e}"))
+                        self.reviewer_output = {
+                            "verdict": "ESCALATE",
+                            "reasoning": f"Review agent failed after {max_retries} attempts — needs human review.",
+                            "risk": "unknown",
+                            "issues": [str(e)],
+                        }
 
-        issues = self.reviewer_output.get("issues", [])
-        for issue in issues:
-            print(_warn(f"  {issue}"))
+            llm_verdict = self.reviewer_output.get("verdict", "UNKNOWN")
+            print(f"  Verdict: {llm_verdict}")
+            print(f"  Reasoning: {self.reviewer_output.get('reasoning', '?')}")
 
-        # Gates are authoritative — LLM can tighten but never loosen
-        if gate_verdict == "DENIED":
-            self.final_verdict = "REFUSED"
-            print(f"\n{_fail('REFUSED')} — gates denied")
-        elif gate_verdict == "AUTO-APPROVED" and llm_verdict in ("REFUSE", "ESCALATE"):
-            self.final_verdict = "ESCALATE"
-            print(f"\n{_warn('ESCALATE')} — gates auto-approved but LLM disagrees")
-        elif llm_verdict == "APPROVE":
-            self.final_verdict = "APPROVED"
-            print(f"\n{_ok('APPROVED')}")
-        elif llm_verdict == "REFUSE":
-            self.final_verdict = "REFUSED"
-            print(f"\n{_fail('REFUSED')}")
-        else:
-            self.final_verdict = "ESCALATE"
-            print(f"\n{_warn('ESCALATE')} — needs human review")
+            issues = self.reviewer_output.get("issues", [])
+            for issue in issues:
+                print(_warn(f"  {issue}"))
 
-        self._capture_review_completed(gate_verdict, llm_verdict)
+            # Gates are authoritative — LLM can tighten but never loosen
+            if gate_verdict == "DENIED":
+                self.final_verdict = "REFUSED"
+                print(f"\n{_fail('REFUSED')} — gates denied")
+            elif gate_verdict == "AUTO-APPROVED" and llm_verdict in ("REFUSE", "ESCALATE"):
+                self.final_verdict = "ESCALATE"
+                print(f"\n{_warn('ESCALATE')} — gates auto-approved but LLM disagrees")
+            elif llm_verdict == "APPROVE":
+                self.final_verdict = "APPROVED"
+                print(f"\n{_ok('APPROVED')}")
+            elif llm_verdict == "REFUSE":
+                self.final_verdict = "REFUSED"
+                print(f"\n{_fail('REFUSED')}")
+            else:
+                self.final_verdict = "ESCALATE"
+                print(f"\n{_warn('ESCALATE')} — needs human review")
+
+            self._capture_review_completed(gate_verdict, llm_verdict)
+        finally:
+            self._cleanup_worktree(explore_root)
 
     def _capture_review_completed(self, gate_verdict: str, llm_verdict: str) -> None:
         """Send a stamphog_review_completed event with all verdict data."""

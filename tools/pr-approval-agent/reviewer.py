@@ -204,8 +204,9 @@ REVIEWER_SYSTEM = textwrap.dedent(
 class Reviewer:
     """LLM reviewer using Agent SDK."""
 
-    def __init__(self, repo_root: Path, *, verbose: bool = False):
+    def __init__(self, repo_root: Path, *, explore_root: Path | None = None, verbose: bool = False):
         self.repo_root = repo_root
+        self.explore_root = explore_root or repo_root
         self.verbose = verbose
 
     def review(self, pr: PRData, classification: dict, gate_context: dict) -> dict:
@@ -224,7 +225,7 @@ class Reviewer:
             system_prompt=REVIEWER_SYSTEM,
             allowed_tools=["Read", "Grep", "Glob"],
             disallowed_tools=["Write", "Edit", "NotebookEdit", "Bash", "Agent", "WebFetch", "WebSearch"],
-            cwd=str(self.repo_root),
+            cwd=str(self.explore_root),
             max_turns=3 if quick else 20,
             model=MODEL,
             permission_mode="dontAsk",
@@ -319,7 +320,7 @@ class Reviewer:
 
     def _write_diff_file(self, pr: PRData) -> Path:
         """Write the PR diff to a temp file so the LLM can Read it on demand."""
-        diff_path = self.repo_root / ".pr-review-diff.patch"
+        diff_path = self.explore_root / ".pr-review-diff.patch"
         result = subprocess.run(
             ["git", "diff", f"{pr.base_sha}...{pr.head_sha}"],
             capture_output=True,
