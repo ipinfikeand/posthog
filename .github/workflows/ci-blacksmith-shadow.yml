@@ -125,7 +125,7 @@ jobs:
         timeout-minutes: 20
         steps:
             - uses: actions/checkout@v6
-            - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+            - uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
             - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
               with:
                   node-version-file: .nvmrc
@@ -162,7 +162,7 @@ jobs:
               run: |
                   cp posthog/user_scripts/latest_user_defined_function.xml docker/clickhouse/user_defined_function.xml
                   bin/ci-wait-for-docker launch --background --down db redis7 clickhouse zookeeper kafka objectstorage feature-flags temporal elasticsearch objectstorage-azure
-            - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+            - uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
             - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
               with:
                   node-version-file: .nvmrc
@@ -272,7 +272,7 @@ jobs:
               run: |
                   DATABASE_URL="postgres://posthog:posthog@localhost:5432/posthog_persons" sqlx migrate info --source rust/persons_migrations/
                   python manage.py makemigrations --check --dry-run
-            - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
+            - uses: pnpm/action-setup@08c4be7e2e672a47d11bd04269e27e5f3e8529cb # v6.0.0
             - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
               with:
                   node-version-file: .nvmrc
