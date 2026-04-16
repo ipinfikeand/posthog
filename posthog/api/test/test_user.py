@@ -1427,6 +1427,7 @@ class TestUserAPI(APIBaseTest):
                 "materialized_view_sync_failed": True,
                 "web_analytics_weekly_digest": True,
                 "organization_member_join_email_disabled": {},
+                "pipeline_notifications_disabled": {},
             },
         )
 
@@ -1445,6 +1446,7 @@ class TestUserAPI(APIBaseTest):
                 "materialized_view_sync_failed": True,
                 "web_analytics_weekly_digest": True,
                 "organization_member_join_email_disabled": {},
+                "pipeline_notifications_disabled": {},
             },
         )
 
@@ -1549,6 +1551,7 @@ class TestUserAPI(APIBaseTest):
                 "materialized_view_sync_failed": False,  # Default value
                 "web_analytics_weekly_digest": True,  # Default value
                 "organization_member_join_email_disabled": {},  # Default value
+                "pipeline_notifications_disabled": {},  # Default value
             },
         )
 
