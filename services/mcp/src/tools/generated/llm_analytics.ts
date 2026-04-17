@@ -13,7 +13,6 @@ import {
     EvaluationsTestHogCreateBody,
     LlmAnalyticsClusteringJobsListQueryParams,
     LlmAnalyticsClusteringJobsRetrieveParams,
-    LlmAnalyticsEvaluationConfigSetActiveKeyCreateBody,
     LlmAnalyticsEvaluationReportsCreateBody,
     LlmAnalyticsEvaluationReportsDestroyParams,
     LlmAnalyticsEvaluationReportsGenerateCreateParams,
@@ -24,7 +23,6 @@ import {
     LlmAnalyticsEvaluationReportsRunsListParams,
     LlmAnalyticsEvaluationReportsRunsListQueryParams,
     LlmAnalyticsEvaluationSummaryCreateBody,
-    LlmAnalyticsModelsRetrieveQueryParams,
     LlmAnalyticsReviewQueueItemsCreateBody,
     LlmAnalyticsReviewQueueItemsDestroyParams,
     LlmAnalyticsReviewQueueItemsListQueryParams,
@@ -109,13 +107,13 @@ const llmaClusteringJobList = (): ToolBase<typeof LlmaClusteringJobListSchema, S
 
 const LlmaEvaluationConfigGetSchema = z.object({})
 
-const llmaEvaluationConfigGet = (): ToolBase<typeof LlmaEvaluationConfigGetSchema, Schemas.EvaluationConfig> => ({
+const llmaEvaluationConfigGet = (): ToolBase<typeof LlmaEvaluationConfigGetSchema, unknown> => ({
     name: 'llma-evaluation-config-get',
     schema: LlmaEvaluationConfigGetSchema,
     // eslint-disable-next-line no-unused-vars
     handler: async (context: Context, params: z.infer<typeof LlmaEvaluationConfigGetSchema>) => {
         const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<Schemas.EvaluationConfig>({
+        const result = await context.api.request<unknown>({
             method: 'GET',
             path: `/api/environments/${encodeURIComponent(String(projectId))}/llm_analytics/evaluation_config/`,
         })
@@ -123,24 +121,17 @@ const llmaEvaluationConfigGet = (): ToolBase<typeof LlmaEvaluationConfigGetSchem
     },
 })
 
-const LlmaEvaluationConfigSetActiveKeySchema = LlmAnalyticsEvaluationConfigSetActiveKeyCreateBody
+const LlmaEvaluationConfigSetActiveKeySchema = z.object({})
 
-const llmaEvaluationConfigSetActiveKey = (): ToolBase<
-    typeof LlmaEvaluationConfigSetActiveKeySchema,
-    Schemas.EvaluationConfig
-> => ({
+const llmaEvaluationConfigSetActiveKey = (): ToolBase<typeof LlmaEvaluationConfigSetActiveKeySchema, unknown> => ({
     name: 'llma-evaluation-config-set-active-key',
     schema: LlmaEvaluationConfigSetActiveKeySchema,
+    // eslint-disable-next-line no-unused-vars
     handler: async (context: Context, params: z.infer<typeof LlmaEvaluationConfigSetActiveKeySchema>) => {
         const projectId = await context.stateManager.getProjectId()
-        const body: Record<string, unknown> = {}
-        if (params.key_id !== undefined) {
-            body['key_id'] = params.key_id
-        }
-        const result = await context.api.request<Schemas.EvaluationConfig>({
+        const result = await context.api.request<unknown>({
             method: 'POST',
             path: `/api/environments/${encodeURIComponent(String(projectId))}/llm_analytics/evaluation_config/set_active_key/`,
-            body,
         })
         return result
     },
@@ -224,23 +215,17 @@ const llmaEvaluationGet = (): ToolBase<typeof LlmaEvaluationGetSchema, Schemas.E
     },
 })
 
-const LlmaEvaluationJudgeModelsSchema = LlmAnalyticsModelsRetrieveQueryParams
+const LlmaEvaluationJudgeModelsSchema = z.object({})
 
-const llmaEvaluationJudgeModels = (): ToolBase<
-    typeof LlmaEvaluationJudgeModelsSchema,
-    Schemas.LLMModelsListResponse
-> => ({
+const llmaEvaluationJudgeModels = (): ToolBase<typeof LlmaEvaluationJudgeModelsSchema, unknown> => ({
     name: 'llma-evaluation-judge-models',
     schema: LlmaEvaluationJudgeModelsSchema,
+    // eslint-disable-next-line no-unused-vars
     handler: async (context: Context, params: z.infer<typeof LlmaEvaluationJudgeModelsSchema>) => {
         const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<Schemas.LLMModelsListResponse>({
+        const result = await context.api.request<unknown>({
             method: 'GET',
             path: `/api/environments/${encodeURIComponent(String(projectId))}/llm_analytics/models/`,
-            query: {
-                key_id: params.key_id,
-                provider: params.provider,
-            },
         })
         return result
     },
