@@ -654,6 +654,10 @@ snapshots:
         hash: v1.k794b7964.4bd8c919925f315cd10937f28eef5bac65841ecf2c8dfdb4213336de58dd0232.L2QOIb43LYwyIWLyC0kn6WYkICqghsSbnWkUeZJ92uE
     components-playerinspector-itemevent--ai-generation-event--dark:
         hash: v1.k794b7964.c71ab0858aa17d0daf3f0124caba2bf8eaf0655133f951aad592965e2f3a810f.Y-34USrLlioFYQlJ4whQI6r6aWAIIrUQwTKNC1AB5WU
+    components-playerinspector-itemevent--autocapture-with-elements--dark:
+        hash: v1.k794b7964.ce3ab692181461003fc714a96bd7a01630873de50341d08b09184efe142c61f9.7YAQG_Fg7H0vIEQxkWGQRcRR3Xk4pqMANEJSjYAD8IE
+    components-playerinspector-itemevent--autocapture-with-elements--light:
+        hash: v1.k794b7964.a8e50b8f04465b4eb6f00ac5981565a309dd2517623abde547315f1d42cb4381.eJVNG_CPPBmXlBtC2ETRCxY3oBy9BDCj9GTXZcpNm1A
     components-playerinspector-itemevent--ai-generation-event--light:
         hash: v1.k794b7964.bfe330daf688328305370c58f8e3504e491ba2a3e7ded488275d3fb25a307b21.q_cwu7Hf0THswF-_XDxRAMI5J4CjzXk1hRXYDMvvvK4
     components-playerinspector-itemevent--ai-span-event--dark:
