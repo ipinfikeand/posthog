@@ -23,7 +23,11 @@ from temporalio.client import (
 from posthog.hogql_queries.ai.vector_search_query_runner import LATEST_ACTIONS_EMBEDDING_VERSION
 from posthog.temporal.ai import SyncVectorsInputs
 from posthog.temporal.ai.sync_vectors import EmbeddingVersion
-from posthog.temporal.alerts.schedule import create_schedule_due_alert_checks_schedule
+from posthog.temporal.alerts.schedule import (
+    create_alerts_backlog_schedule,
+    create_cleanup_alert_checks_schedule,
+    create_schedule_due_alert_checks_schedule,
+)
 from posthog.temporal.common.client import async_connect
 from posthog.temporal.common.schedule import a_create_schedule, a_delete_schedule, a_schedule_exists, a_update_schedule
 from posthog.temporal.data_imports.signals.conversations_schedule import (
@@ -554,6 +558,8 @@ schedules = [
     create_wa_weekly_digest_schedule,
     create_logs_alert_check_schedule,
     create_schedule_due_alert_checks_schedule,
+    create_cleanup_alert_checks_schedule,
+    create_alerts_backlog_schedule,
 ]
 
 if settings.EE_AVAILABLE:
