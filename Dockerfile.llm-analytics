@@ -19,6 +19,8 @@ COPY --from=uv /uv /uvx /bin/
 # Set working directory
 WORKDIR /code
 
+COPY bin/install-antlr4-cpp-runtime /usr/local/bin/install-antlr4-cpp-runtime
+
 # uv settings for Docker builds
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
@@ -28,14 +30,20 @@ ENV UV_PROJECT_ENVIRONMENT=/python-runtime
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     "build-essential" \
+    "ca-certificates" \
+    "cmake" \
+    "curl" \
     "git" \
     "libpq-dev" \
     "libxmlsec1=1.2.37-2" \
     "libxmlsec1-dev=1.2.37-2" \
     "libffi-dev" \
+    "unzip" \
+    "uuid-dev" \
     "zlib1g-dev" \
     "pkg-config" \
     && \
+    install-antlr4-cpp-runtime && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies including sentiment ML deps
@@ -43,6 +51,10 @@ RUN --mount=type=cache,id=uv-libxmlsec1.2.37-2,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-dev --no-install-project --group sentiment --no-binary-package lxml --no-binary-package xmlsec
+
+COPY common/hogql_parser common/hogql_parser/
+RUN --mount=type=cache,id=uv-libxmlsec1.2.37-2,target=/root/.cache/uv \
+    uv pip install --python /python-runtime/bin/python --reinstall --no-deps ./common/hogql_parser
 
 # Copy project files
 COPY manage.py manage.py

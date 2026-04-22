@@ -24,6 +24,29 @@
 #
 # ---------------------------------------------------------
 #
+FROM emscripten/emsdk:4.0.23 AS hogql-parser-wasm-build
+WORKDIR /code
+SHELL ["/bin/bash", "-e", "-o", "pipefail", "-c"]
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    "ninja-build" \
+    && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY common/hogql_parser/ common/hogql_parser/
+RUN cd common/hogql_parser && \
+    npm run build && \
+    test -f dist/hogql_parser_wasm.js && \
+    test -f dist/hogql_parser_wasm_browser.js && \
+    test -f dist/hogql_parser_wasm.cjs && \
+    test -f dist/index.cjs && \
+    test -f dist/index.d.ts
+
+
+#
+# ---------------------------------------------------------
+#
 FROM node:24.13.0-bookworm-slim AS frontend-build
 WORKDIR /code
 SHELL ["/bin/bash", "-e", "-o", "pipefail", "-c"]
@@ -33,6 +56,8 @@ COPY frontend/package.json frontend/
 COPY frontend/bin/ frontend/bin/
 COPY bin/ bin/
 COPY patches/ patches/
+COPY common/hogql_parser/package.json common/hogql_parser/
+COPY --from=hogql-parser-wasm-build /code/common/hogql_parser/dist/ common/hogql_parser/dist/
 COPY common/hogvm/typescript/ common/hogvm/typescript/
 COPY common/esbuilder/ common/esbuilder/
 COPY common/replay-shared/ common/replay-shared/
@@ -103,11 +128,31 @@ RUN --mount=type=cache,id=pnpm,target=/tmp/pnpm-store-v24 \
 #
 # ---------------------------------------------------------
 #
+FROM python:3.12.12-slim-bookworm@sha256:78e702aee4d693e769430f0d7b4f4858d8ea3f1118dc3f57fee3f757d0ca64b1 AS antlr4-runtime-build
+SHELL ["/bin/bash", "-e", "-o", "pipefail", "-c"]
+
+COPY bin/install-antlr4-cpp-runtime /usr/local/bin/install-antlr4-cpp-runtime
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    "build-essential" \
+    "ca-certificates" \
+    "cmake" \
+    "curl" \
+    "pkg-config" \
+    "unzip" \
+    "uuid-dev" \
+    && \
+    install-antlr4-cpp-runtime && \
+    rm -rf /var/lib/apt/lists/*
+
+
 FROM ghcr.io/astral-sh/uv:0.10.2 AS uv
 
 # Same as pyproject.toml so that uv can pick it up and doesn't need to download a different Python version.
 FROM python:3.12.12-slim-bookworm@sha256:78e702aee4d693e769430f0d7b4f4858d8ea3f1118dc3f57fee3f757d0ca64b1 AS posthog-build
 COPY --from=uv /uv /uvx /bin/
+COPY --from=antlr4-runtime-build /usr/include/antlr4-runtime /usr/include/antlr4-runtime
+COPY --from=antlr4-runtime-build /usr/lib/libantlr4-runtime.so* /usr/lib/
 WORKDIR /code
 SHELL ["/bin/bash", "-e", "-o", "pipefail", "-c"]
 
@@ -139,6 +184,11 @@ RUN --mount=type=cache,id=uv-libxmlsec1.2.37-2,target=/root/.cache/uv \
 
 ENV PATH=/python-runtime/bin:$PATH \
     PYTHONPATH=/python-runtime
+
+COPY common/hogql_parser common/hogql_parser/
+RUN ldconfig
+RUN --mount=type=cache,id=uv-libxmlsec1.2.37-2,target=/root/.cache/uv \
+    uv pip install --python /python-runtime/bin/python --reinstall --no-deps ./common/hogql_parser
 
 # Add in Django deps
 COPY manage.py manage.py
@@ -185,7 +235,7 @@ RUN apt-get update && \
 FROM unit:1.34.2-python3.12
 WORKDIR /code
 SHELL ["/bin/bash", "-e", "-o", "pipefail", "-c"]
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 ARG UNIT_GIT_TAG=1.35.0
 ARG UNIT_GIT_REF=28404105810f53c570523c3e70006ad0ca210e58
 
@@ -243,6 +293,9 @@ RUN apt-get update && \
     && \
     rm -rf /var/lib/apt/lists/*
 
+COPY --from=antlr4-runtime-build /usr/lib/libantlr4-runtime.so* /usr/lib/
+RUN ldconfig
+
 # Install MS SQL dependencies
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | tee /etc/apt/trusted.gpg.d/microsoft.asc && \
     curl https://packages.microsoft.com/config/debian/11/prod.list | tee /etc/apt/sources.list.d/mssql-release.list && \
@@ -251,7 +304,7 @@ RUN curl https://packages.microsoft.com/keys/microsoft.asc | tee /etc/apt/truste
     rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 24.13.0 for standalone scripts with architecture detection and verification
-ENV NODE_VERSION 24.13.0
+ENV NODE_VERSION=24.13.0
 
 RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
     && case "${dpkgArch##*-}" in \

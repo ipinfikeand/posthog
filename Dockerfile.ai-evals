@@ -18,21 +18,28 @@ ENV UV_PROJECT_ENVIRONMENT=/python-runtime
 
 # Copy Docker scripts
 COPY docker/ ./docker/
+COPY bin/install-antlr4-cpp-runtime /usr/local/bin/install-antlr4-cpp-runtime
 
 # Install system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     "build-essential" \
+    "ca-certificates" \
+    "cmake" \
+    "curl" \
     "git" \
     "libpq-dev" \
     "libxmlsec1" \
     "libxmlsec1-dev" \
     "libffi-dev" \
+    "unzip" \
+    "uuid-dev" \
     "zlib1g-dev" \
     "pkg-config" \
     "netcat-openbsd" \
     "postgresql-client" \
     && \
+    install-antlr4-cpp-runtime && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies using cache mount for faster rebuilds
@@ -40,6 +47,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --locked --no-install-project --no-binary-package lxml --no-binary-package xmlsec
+
+COPY common/hogql_parser common/hogql_parser/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /python-runtime/bin/python --reinstall --no-deps ./common/hogql_parser
 
 # Copy project files
 COPY bin/ ./bin/

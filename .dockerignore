@@ -4,6 +4,7 @@
 !.kearc
 !bin
 !common/hogvm
+!common/hogql_parser
 !common/esbuilder
 !common/migration_utils
 !common/replay-headless

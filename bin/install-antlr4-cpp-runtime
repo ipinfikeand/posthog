@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+version="${ANTLR_CPP_RUNTIME_VERSION:-4.13.1}"
+expected_md5="${ANTLR_CPP_RUNTIME_MD5:-c875c148991aacd043f733827644a76f}"
+workdir="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$workdir"
+}
+trap cleanup EXIT
+
+archive="$workdir/antlr4-cpp-runtime.zip"
+
+curl --fail --location "https://www.antlr.org/download/antlr4-cpp-runtime-${version}-source.zip" --output "$archive" ||
+    curl --fail --location "https://raw.githubusercontent.com/antlr/website-antlr4/gh-pages/download/antlr4-cpp-runtime-${version}-source.zip" --output "$archive"
+
+echo "$expected_md5  $archive" | md5sum --check -
+
+unzip "$archive" -d "$workdir/source"
+cmake -S "$workdir/source" -B "$workdir/build" \
+    -DBUILD_TESTING=OFF \
+    -DANTLR4_BUILD_TESTS=OFF \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake --build "$workdir/build" --parallel "$(nproc)"
+DESTDIR="$workdir/install" cmake --install "$workdir/build"
+
+mkdir -p /usr/include /usr/lib
+cp -r "$workdir/install/usr/local/include/antlr4-runtime" /usr/include/
+find "$workdir/install/usr/local" -name 'libantlr4-runtime.so*' -exec cp -P {} /usr/lib/ \;
+ldconfig
