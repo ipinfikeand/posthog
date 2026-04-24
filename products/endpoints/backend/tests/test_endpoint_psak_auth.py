@@ -1,5 +1,6 @@
 from posthog.test.base import APIBaseTest
 
+from parameterized import parameterized
 from rest_framework import status
 
 from posthog.models.organization import Organization, OrganizationMembership
@@ -10,9 +11,10 @@ from posthog.models.utils import hash_key_value
 from products.endpoints.backend.tests.conftest import create_endpoint_with_version
 
 SAMPLE_QUERY = {"kind": "HogQLQuery", "query": "SELECT 1"}
+_UNSET = object()
 
 
-def _make_psak(team, label="psak", scopes=None):
+def _make_psak(team, label="psak", scopes=_UNSET):
     # Token must match _SECRET_API_KEY_RE = r"^phs_[a-zA-Z0-9]+$", so only alphanumerics after phs_.
     suffix = "".join(c for c in label if c.isalnum())
     token = "phs_" + ("a" * 35) + suffix
@@ -21,7 +23,7 @@ def _make_psak(team, label="psak", scopes=None):
         label=label,
         mask_value=f"phs_...{suffix[:4]}",
         secure_value=hash_key_value(token),
-        scopes=scopes if scopes is not None else ["endpoint:read"],
+        scopes=["endpoint:read"] if scopes is _UNSET else scopes,
     )
     return token, psak
 
@@ -62,18 +64,14 @@ class TestEndpointViewSetPSAKAuth(APIBaseTest):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
 
-    def test_psak_without_scope_returns_403(self):
-        token, _ = _make_psak(self.team, label="no-scope-key", scopes=[])
-
-        response = self.client.get(
-            f"/api/projects/{self.team.id}/endpoints/",
-            **self._auth_headers(token),
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_psak_with_null_scopes_returns_403(self):
-        token, _ = _make_psak(self.team, label="null-scope-key", scopes=None)
+    @parameterized.expand(
+        [
+            ("empty_list", []),
+            ("null", None),
+        ]
+    )
+    def test_psak_without_endpoint_scope_returns_403(self, _name, scopes):
+        token, _ = _make_psak(self.team, label=f"no-scope-{_name}", scopes=scopes)
 
         response = self.client.get(
             f"/api/projects/{self.team.id}/endpoints/",

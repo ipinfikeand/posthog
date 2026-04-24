@@ -16,6 +16,7 @@ from posthog.auth import (
     JwtAuthentication,
     OAuthAccessTokenAuthentication,
     PersonalAPIKeyAuthentication,
+    ProjectSecretAPIKeyUser,
     SessionAuthentication,
     SharingAccessTokenAuthentication,
     SharingPasswordProtectedAuthentication,
@@ -182,6 +183,11 @@ class TeamAndOrgViewSetMixin(_GenericViewSet):  # TODO: Rename to include "Env" 
             self._in_get_queryset = False
 
     def _filter_queryset_by_access_level(self, queryset: QuerySet) -> QuerySet:
+        # PSAK principals are not real users, so RBAC lookups on request.user would crash.
+        # Scope + team-match checks in APIScopePermission already gate access for these callers.
+        if isinstance(self.request.user, ProjectSecretAPIKeyUser):
+            return queryset
+
         if self.action != "list":
             # NOTE: If we are getting an individual object then we don't filter it out here - this is handled by the permission logic
             # The reason being, that if we filter out here already, we can't load the object which is required for checking access controls for it

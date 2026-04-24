@@ -383,10 +383,6 @@ class TeamSecretTokenAuthentication(authentication.BaseAuthentication):
 
     keyword = "Bearer"
 
-    @classmethod
-    def find_secret_api_token(cls, request: Union[HttpRequest, Request]) -> Optional[str]:
-        return _extract_phs_token(request)
-
     def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
         secret_api_token = _extract_phs_token(request)
 
