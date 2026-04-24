@@ -311,77 +311,37 @@ class PersonalAPIKeyAuthentication(authentication.BaseAuthentication):
         return cls.keyword
 
 
-class ProjectSecretAPIKeyAuthentication(authentication.BaseAuthentication):
+def _extract_phs_token(request: Union[HttpRequest, Request]) -> Optional[str]:
     """
-    Authenticates using a project secret API key. Unlike a personal API key, this is not associated with a
-    user and should only be used for local_evaluation and flags remote_config (not to be confused with the
-    other remote_config endpoint) requests. When authenticated, this returns a "synthetic"
-    ProjectSecretAPIKeyUser object that has the team set. This allows us to use the existing permissioning
-    system for local_evaluation and flags remote_config requests.
-
-    Only the first key candidate found in the request is tried, and the order is:
-    1. Request Authorization header of type Bearer.
-    2. Request body.
+    Find a `phs_` secret token in the request. Checks the Authorization header first
+    (Bearer scheme), then the request body field `secret_api_key`. Used by both
+    TeamSecretTokenAuthentication (legacy Team.secret_api_token) and
+    ProjectSecretAPIKeyAuthentication (PSAK model).
     """
+    if "authorization" in request.headers:
+        authorization_match = re.match(r"^Bearer\s+(.+)$", request.headers["authorization"])
+        if authorization_match:
+            token = authorization_match.group(1).strip()
+            if _SECRET_API_KEY_RE.match(token):
+                return token
 
-    keyword = "Bearer"
+    # Wrap HttpRequest in DRF Request if needed
+    if not isinstance(request, Request):
+        request = Request(request)
 
-    @classmethod
-    def find_secret_api_token(
-        cls,
-        request: Union[HttpRequest, Request],
-    ) -> Optional[str]:
-        """Try to find project secret API key in request and return it"""
-        if "authorization" in request.headers:
-            authorization_match = re.match(rf"^{cls.keyword}\s+(.+)$", request.headers["authorization"])
-            if authorization_match:
-                token = authorization_match.group(1).strip()
-                if _SECRET_API_KEY_RE.match(token):
-                    return token
+    data = request.data
 
-        # Wrap HttpRequest in DRF Request if needed
-        if not isinstance(request, Request):
-            request = Request(request)
+    if data and "secret_api_key" in data:
+        secret_api_key = data["secret_api_key"]
+        if isinstance(secret_api_key, str) and _SECRET_API_KEY_RE.match(secret_api_key):
+            SECRET_API_KEY_BODY_COUNTER.inc()
+            return secret_api_key
 
-        data = request.data
-
-        if data and "secret_api_key" in data:
-            secret_api_key = data["secret_api_key"]
-            if isinstance(secret_api_key, str) and _SECRET_API_KEY_RE.match(secret_api_key):
-                SECRET_API_KEY_BODY_COUNTER.inc()
-                return secret_api_key
-
-        return None
-
-    def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
-        secret_api_token = self.find_secret_api_token(request)
-
-        if not secret_api_token:
-            return None
-
-        # get the team from the secret api key
-        try:
-            Team = apps.get_model(app_label="posthog", model_name="Team")
-            team = Team.objects.get_team_from_cache_or_secret_api_token(secret_api_token)
-
-            if team is None:
-                return None
-
-            # Secret api keys are not associated with a user, so we create a ProjectSecretAPIKeyUser
-            # and attach the team. The team is the important part here.
-            return (ProjectSecretAPIKeyUser(team), None)
-        except Team.DoesNotExist:
-            return None
-
-    @classmethod
-    def authenticate_header(cls, request) -> str:
-        return cls.keyword
+    return None
 
 
-class ProjectSecretAPIKeyUser:
-    """
-    A "synthetic" user object returned by the ProjectSecretAPIKeyAuthentication when authenticating with a project secret API key.
-    """
+class _TeamScopedSyntheticUser:
+    """Common synthetic-principal shape for team-scoped service auth."""
 
     def __init__(self, team):
         self.team = team
@@ -394,6 +354,105 @@ class ProjectSecretAPIKeyUser:
 
     def has_module_perms(self, app_label):
         return False
+
+
+class TeamSecretTokenUser(_TeamScopedSyntheticUser):
+    """
+    Synthetic user returned by TeamSecretTokenAuthentication when authenticating
+    via the legacy team-level Team.secret_api_token field.
+    """
+
+
+class TeamSecretTokenAuthentication(authentication.BaseAuthentication):
+    """
+    Authenticates using the legacy team-level Team.secret_api_token field.
+
+    This is not a ProjectSecretAPIKey (PSAK) model authenticator — it validates the
+    `phs_*` token against the legacy per-team secret stored on the Team row. It's
+    intended for endpoints that were gated before PSAK existed
+    (local_evaluation, feature flag remote_config, live debugger breakpoints).
+
+    When authenticated, returns a synthetic TeamSecretTokenUser with the team
+    attached, so downstream permission code can resolve team context without a
+    real User.
+
+    Only the first key candidate found in the request is tried, and the order is:
+    1. Request Authorization header of type Bearer.
+    2. Request body (`secret_api_key` field).
+    """
+
+    keyword = "Bearer"
+
+    @classmethod
+    def find_secret_api_token(cls, request: Union[HttpRequest, Request]) -> Optional[str]:
+        return _extract_phs_token(request)
+
+    def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
+        secret_api_token = _extract_phs_token(request)
+
+        if not secret_api_token:
+            return None
+
+        try:
+            Team = apps.get_model(app_label="posthog", model_name="Team")
+            team = Team.objects.get_team_from_cache_or_secret_api_token(secret_api_token)
+
+            if team is None:
+                return None
+
+            return (TeamSecretTokenUser(team), None)
+        except Team.DoesNotExist:
+            return None
+
+    @classmethod
+    def authenticate_header(cls, request) -> str:
+        return cls.keyword
+
+
+class ProjectSecretAPIKeyUser(_TeamScopedSyntheticUser):
+    """
+    Synthetic user returned by ProjectSecretAPIKeyAuthentication. Carries the
+    backing ProjectSecretAPIKey so APIScopePermission can read its scopes.
+    """
+
+    def __init__(self, project_secret_api_key):
+        super().__init__(project_secret_api_key.team)
+        self.project_secret_api_key = project_secret_api_key
+
+
+class ProjectSecretAPIKeyAuthentication(authentication.BaseAuthentication):
+    """
+    Authenticates a ProjectSecretAPIKey (PSAK) model record via its SHA256 hash.
+
+    Does NOT fall back to Team.secret_api_token — that's TeamSecretTokenAuthentication.
+    Intended for endpoints that enforce PSAK scopes via APIScopePermission.
+    """
+
+    keyword = "Bearer"
+
+    def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
+        from posthog.models.project_secret_api_key import ProjectSecretAPIKey, find_project_secret_api_key
+
+        token = _extract_phs_token(request)
+        if not token:
+            return None
+
+        psak = find_project_secret_api_key(token)
+        if psak is None:
+            return None
+
+        now = timezone.now()
+        if psak.last_used_at is None or (now - psak.last_used_at > timedelta(hours=1)):
+            # Use .update() to bypass ModelActivityMixin save hooks and avoid
+            # activity-log noise / Redis cache invalidation on every request.
+            ProjectSecretAPIKey.objects.filter(pk=psak.pk).update(last_used_at=now)
+
+        self.project_secret_api_key = psak
+        return (ProjectSecretAPIKeyUser(psak), None)
+
+    @classmethod
+    def authenticate_header(cls, request) -> str:
+        return cls.keyword
 
 
 class JwtAuthentication(authentication.BaseAuthentication):

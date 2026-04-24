@@ -57,6 +57,7 @@ from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.api.services.query import process_query_model
 from posthog.api.shared import UserBasicSerializer
 from posthog.api.utils import action
+from posthog.auth import ProjectSecretAPIKeyAuthentication
 from posthog.clickhouse.client.connection import Workload
 from posthog.clickhouse.client.limit import ConcurrencyLimitExceeded
 from posthog.clickhouse.query_tagging import Feature, Product, get_query_tag_value, tag_queries
@@ -389,6 +390,9 @@ class MaterializationPreviewRequestSerializer(serializers.Serializer):
 )
 @extend_schema(tags=[ProductKey.ENDPOINTS])
 class EndpointViewSet(TeamAndOrgViewSetMixin, PydanticModelMixin, viewsets.ModelViewSet):
+    # Accept ProjectSecretAPIKey auth in addition to the default chain (session, personal API key, OAuth, JWT).
+    # TeamAndOrgViewSetMixin.get_authenticators prepends this, so PSAK is tried first.
+    authentication_classes = [ProjectSecretAPIKeyAuthentication]
     # NOTE: Do we need to override the scopes for the "create"
     scope_object = "endpoint"
     # Special case for query - these are all essentially read actions

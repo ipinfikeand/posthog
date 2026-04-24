@@ -1,10 +1,12 @@
+from typing import Optional
+
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils import timezone
 
 from posthog.models.activity_logging.model_activity import ModelActivityMixin
 
-from .utils import generate_random_token
+from .utils import generate_random_token, hash_key_value
 
 
 class ProjectSecretAPIKey(ModelActivityMixin, models.Model):
@@ -48,3 +50,11 @@ class ProjectSecretAPIKey(ModelActivityMixin, models.Model):
         db_table = "posthog_projectsecretapikey"
         indexes = [models.Index(fields=["team", "created_at"])]
         constraints = [models.UniqueConstraint(fields=["team", "label"], name="unique_team_label")]
+
+
+def find_project_secret_api_key(token: str) -> Optional["ProjectSecretAPIKey"]:
+    secure_value = hash_key_value(token)
+    try:
+        return ProjectSecretAPIKey.objects.select_related("team", "team__organization").get(secure_value=secure_value)
+    except ProjectSecretAPIKey.DoesNotExist:
+        return None

@@ -7,15 +7,15 @@ from posthog.auth import (
     JwtAuthentication,
     OAuthAccessTokenAuthentication,
     PersonalAPIKeyAuthentication,
-    ProjectSecretAPIKeyAuthentication,
     SessionAuthentication,
+    TeamSecretTokenAuthentication,
 )
 
 
 class TestClassifyAuthMethod(TestCase):
     @parameterized.expand(
         [
-            (ProjectSecretAPIKeyAuthentication(), "secret_api_key"),
+            (TeamSecretTokenAuthentication(), "secret_api_key"),
             (PersonalAPIKeyAuthentication(), "personal_api_key"),
             (OAuthAccessTokenAuthentication(), "oauth"),
             (JwtAuthentication(), "jwt"),

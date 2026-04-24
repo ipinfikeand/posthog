@@ -20,6 +20,7 @@ from posthog.auth import (
     SessionAuthentication,
     SharingAccessTokenAuthentication,
     SharingPasswordProtectedAuthentication,
+    TeamSecretTokenAuthentication,
 )
 from posthog.cloud_utils import is_cloud
 from posthog.constants import AvailableFeature
@@ -182,8 +183,12 @@ class TeamMemberAccessPermission(BasePermission):
     message = "You don't have access to the project."
 
     def has_permission(self, request, view) -> bool:
-        if is_authenticated_via_project_secret_api_token(request):
-            # Ignore the team check for project secret API keys. It's handled by the ProjectSecretAPITokenPermission
+        if is_authenticated_via_team_secret_token(request):
+            # Ignore the team check for team secret tokens. It's handled by the TeamSecretTokenPermission.
+            return True
+
+        if is_authenticated_via_project_secret_api_key(request):
+            # Ignore the team check for project secret API keys. The team match is enforced in APIScopePermission.
             return True
 
         try:
@@ -197,11 +202,15 @@ class TeamMemberAccessPermission(BasePermission):
         return requesting_level is not None
 
 
-def is_authenticated_via_project_secret_api_token(request: Request) -> bool:
+def is_authenticated_via_team_secret_token(request: Request) -> bool:
+    return isinstance(request.successful_authenticator, TeamSecretTokenAuthentication)
+
+
+def is_authenticated_via_project_secret_api_key(request: Request) -> bool:
     return isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication)
 
 
-def _is_request_for_project_secret_api_token_secured_endpoint(request: Request) -> bool:
+def _is_request_for_team_secret_token_secured_endpoint(request: Request) -> bool:
     return bool(
         request.resolver_match
         and request.resolver_match.view_name
@@ -482,6 +491,8 @@ class APIScopePermission(ScopeBasePermission):
             if not key_scopes:
                 self.message = "OAuth token has no scopes and cannot access this resource"
                 return False
+        elif isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
+            key_scopes = request.successful_authenticator.project_secret_api_key.scopes or []
         else:
             return True
 
@@ -491,7 +502,10 @@ class APIScopePermission(ScopeBasePermission):
             self.message = "This action does not support personal API key access"
             return False
 
-        self.check_team_and_org_permissions(request, view)
+        if isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
+            self._check_project_secret_api_key_team(request, view)
+        else:
+            self.check_team_and_org_permissions(request, view)
 
         # `*` is the "Full access to all scopes" consent option; INTERNAL viewsets
         # are programmatic-only and must not be reachable via user-consented tokens.
@@ -511,6 +525,14 @@ class APIScopePermission(ScopeBasePermission):
                 return False
 
         return True
+
+    def _check_project_secret_api_key_team(self, request, view) -> None:
+        psak = request.successful_authenticator.project_secret_api_key
+        try:
+            if view.team.id != psak.team_id:
+                raise PermissionDenied(f"API key does not have access to the requested project: ID {view.team.id}.")
+        except (KeyError, AttributeError, Team.DoesNotExist):
+            raise PermissionDenied("Project secret API keys are only supported on project-based endpoints.")
 
     def check_team_and_org_permissions(self, request, view) -> None:
         scope_object = self._get_scope_object(request, view)
@@ -633,6 +655,11 @@ class AccessControlPermission(ScopeBasePermission):
         # At this level we are checking an individual resource - this could be a project or a lower level item like a Dashboard
         # NOTE: If the object is a Team then we shortcircuit here and create a UAC
         # Reason being that there is a loop from view.user_access_control -> view.team -> view.user_access_control
+        if is_authenticated_via_team_secret_token(request) or is_authenticated_via_project_secret_api_key(request):
+            # Service-auth principals bypass UAC; team-level gating is handled elsewhere
+            # (TeamSecretTokenPermission for legacy, APIScopePermission for PSAK).
+            return True
+
         if isinstance(object, Team):
             uac = UserAccessControl(user=request.user, team=object)
         else:
@@ -660,8 +687,12 @@ class AccessControlPermission(ScopeBasePermission):
         # Primarily we are checking the user's access to the parent resource type (i.e. project, organization)
         # as well as enforcing any global restrictions (e.g. generically only editing of a flag is allowed)
 
-        if is_authenticated_via_project_secret_api_token(request):
-            # Ignore the team check for project secret API keys. It's handled by the ProjectSecretAPITokenPermission
+        if is_authenticated_via_team_secret_token(request):
+            # Ignore the team check for team secret tokens. It's handled by the TeamSecretTokenPermission.
+            return True
+
+        if is_authenticated_via_project_secret_api_key(request):
+            # Ignore the team check for project secret API keys. The team match is enforced in APIScopePermission.
             return True
 
         # Check if the endpoint requires a current team to be set on the user
@@ -780,23 +811,26 @@ class PostHogFeatureFlagPermission(BasePermission):
         return True
 
 
-class ProjectSecretAPITokenPermission(BasePermission):
+class TeamSecretTokenPermission(BasePermission):
     """
-    Controls access to the local_evaluation and remote_config endpoints when authenticated via a project secret API token.
-    Also validates that the authenticated team matches the resolved team (analogous to TeamMemberAccessPermission for personal keys).
+    Controls access to the local_evaluation and remote_config endpoints when authenticated via
+    the legacy team-level Team.secret_api_token (see TeamSecretTokenAuthentication).
+
+    Also validates that the authenticated team matches the resolved team (analogous to
+    TeamMemberAccessPermission for personal keys).
     """
 
     def has_permission(self, request, view) -> bool:
-        if not isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
+        if not isinstance(request.successful_authenticator, TeamSecretTokenAuthentication):
             return True
 
-        # Check that the endpoint is allowed for secret API keys
-        if not _is_request_for_project_secret_api_token_secured_endpoint(request):
+        # Check that the endpoint is allowed for team secret tokens
+        if not _is_request_for_team_secret_token_secured_endpoint(request):
             return False
 
         # Check team consistency: authenticated team must match resolved team
         # This prevents cross-team access when project_api_key is provided in request body
-        authenticated_team = request.user.team  # From ProjectSecretAPIKeyUser
+        authenticated_team = request.user.team  # From TeamSecretTokenUser
         try:
             resolved_team = view.team  # From routing logic (may use project_api_key override)
         except (AttributeError, Team.DoesNotExist):
