@@ -1,15 +1,40 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "properties": {
-        "disabled_data": {
+        "assignee": {
             "anyOf": [
-                {},
+                {
+                    "properties": {
+                        "id": {
+                            "anyOf": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "string"
+                                }
+                            ],
+                            "description": "User ID when `type` is `user`, or role UUID when `type` is `role`."
+                        },
+                        "type": {
+                            "description": "Assignee type. Use `user` for a user ID or `role` for a role UUID.\n\n* `user` - user\n* `role` - role",
+                            "enum": ["user", "role"],
+                            "type": "string"
+                        }
+                    },
+                    "required": ["type", "id"],
+                    "type": "object"
+                },
                 {
                     "type": "null"
                 }
-            ]
+            ],
+            "description": "Optional user or role to assign to issues created by this grouping rule."
         },
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 7c1ef4cf6f6 (test(mcp): update unit test snapshots)
         "description": {
             "anyOf": [
                 {
@@ -48,6 +73,7 @@
                                         ]
                                     },
                                     "operator": {
+<<<<<<< HEAD
                                         "default": "exact",
                                         "enum": [
                                             "exact",
@@ -86,6 +112,52 @@
                                             "not_icontains_multi"
                                         ],
                                         "type": "string"
+=======
+                                        "anyOf": [
+                                            {
+                                                "enum": [
+                                                    "exact",
+                                                    "is_not",
+                                                    "icontains",
+                                                    "not_icontains",
+                                                    "regex",
+                                                    "not_regex",
+                                                    "gt",
+                                                    "gte",
+                                                    "lt",
+                                                    "lte",
+                                                    "is_set",
+                                                    "is_not_set",
+                                                    "is_date_exact",
+                                                    "is_date_before",
+                                                    "is_date_after",
+                                                    "between",
+                                                    "not_between",
+                                                    "min",
+                                                    "max",
+                                                    "in",
+                                                    "not_in",
+                                                    "is_cleaned_path_exact",
+                                                    "flag_evaluates_to",
+                                                    "semver_eq",
+                                                    "semver_neq",
+                                                    "semver_gt",
+                                                    "semver_gte",
+                                                    "semver_lt",
+                                                    "semver_lte",
+                                                    "semver_tilde",
+                                                    "semver_caret",
+                                                    "semver_wildcard",
+                                                    "icontains_multi",
+                                                    "not_icontains_multi"
+                                                ],
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+>>>>>>> 7c1ef4cf6f6 (test(mcp): update unit test snapshots)
                                     },
                                     "type": {
                                         "default": "event",
@@ -559,6 +631,7 @@
                                         ]
                                     },
                                     "operator": {
+<<<<<<< HEAD
                                         "default": "in",
                                         "enum": [
                                             "exact",
@@ -597,6 +670,52 @@
                                             "not_icontains_multi"
                                         ],
                                         "type": "string"
+=======
+                                        "anyOf": [
+                                            {
+                                                "enum": [
+                                                    "exact",
+                                                    "is_not",
+                                                    "icontains",
+                                                    "not_icontains",
+                                                    "regex",
+                                                    "not_regex",
+                                                    "gt",
+                                                    "gte",
+                                                    "lt",
+                                                    "lte",
+                                                    "is_set",
+                                                    "is_not_set",
+                                                    "is_date_exact",
+                                                    "is_date_before",
+                                                    "is_date_after",
+                                                    "between",
+                                                    "not_between",
+                                                    "min",
+                                                    "max",
+                                                    "in",
+                                                    "not_in",
+                                                    "is_cleaned_path_exact",
+                                                    "flag_evaluates_to",
+                                                    "semver_eq",
+                                                    "semver_neq",
+                                                    "semver_gt",
+                                                    "semver_gte",
+                                                    "semver_lt",
+                                                    "semver_lte",
+                                                    "semver_tilde",
+                                                    "semver_caret",
+                                                    "semver_wildcard",
+                                                    "icontains_multi",
+                                                    "not_icontains_multi"
+                                                ],
+                                                "type": "string"
+                                            },
+                                            {
+                                                "type": "null"
+                                            }
+                                        ]
+>>>>>>> 7c1ef4cf6f6 (test(mcp): update unit test snapshots)
                                     },
                                     "type": {
                                         "default": "cohort",
@@ -1852,6 +1971,7 @@
             },
             "required": ["type", "values"],
             "type": "object"
+<<<<<<< HEAD
 =======
         "filters": {},
         "order_key": {
@@ -1859,8 +1979,10 @@
             "minimum": -2147483648,
             "type": "number"
 >>>>>>> 6492e986898 (test(mcp): update unit test snapshots)
+=======
+>>>>>>> 7c1ef4cf6f6 (test(mcp): update unit test snapshots)
         }
     },
-    "required": ["filters", "order_key"],
+    "required": ["filters"],
     "type": "object"
 }
