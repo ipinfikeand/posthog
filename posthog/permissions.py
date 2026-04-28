@@ -492,6 +492,11 @@ class APIScopePermission(ScopeBasePermission):
                 self.message = "OAuth token has no scopes and cannot access this resource"
                 return False
         elif isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
+            # PSAK access is opt-in per action. The viewset must list each allowed action explicitly.
+            psak_allowed_actions = getattr(view, "psak_allowed_actions", None) or []
+            if view.action not in psak_allowed_actions:
+                self.message = "This action does not support project secret API key access"
+                return False
             key_scopes = request.successful_authenticator.project_secret_api_key.scopes or []
         else:
             return True
@@ -500,9 +505,9 @@ class APIScopePermission(ScopeBasePermission):
 
         if not required_scopes:
             if isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
-                self.message = "This action does not support Project Secret API Key access"
+                self.message = "This action does not support project secret API key access"
             else:
-                self.message = "This action does not support Personal API Key access"
+                self.message = "This action does not support personal API key access"
             return False
 
         if isinstance(request.successful_authenticator, ProjectSecretAPIKeyAuthentication):
@@ -534,7 +539,7 @@ class APIScopePermission(ScopeBasePermission):
         try:
             if view.team.id != psak.team_id:
                 raise PermissionDenied(f"API key does not have access to the requested project: ID {view.team.id}.")
-        except (KeyError, AttributeError, Team.DoesNotExist):
+        except (AttributeError, Team.DoesNotExist):
             raise PermissionDenied("Project secret API keys are only supported on project-based endpoints.")
 
     def check_team_and_org_permissions(self, request, view) -> None:

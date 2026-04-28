@@ -902,10 +902,10 @@ class Database(BaseModel):
                     send_feature_flag_events=False,
                 )
                 if is_hogql_access_control_enabled:
-                    if user is not None:
-                        database._filter_system_tables_for_user(user, team)
-                    else:
+                    if user is None or getattr(user, "id", None) is None:
                         database._filter_all_scoped_system_tables()
+                    else:
+                        database._filter_system_tables_for_user(user, team)
 
         with timings.measure("modifiers"):
             modifiers = create_default_modifiers_for_team(team, modifiers)

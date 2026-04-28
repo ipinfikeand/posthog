@@ -137,6 +137,7 @@ class ProjectSecretAPIKeySerializer(serializers.ModelSerializer):
 @extend_schema(tags=["core"])
 class ProjectSecretAPIKeyViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     scope_object = "project"
+    scope_object_write_actions = ["create", "update", "partial_update", "patch", "destroy", "roll"]
     lookup_field = "id"
     serializer_class = ProjectSecretAPIKeySerializer
     permission_classes = [TimeSensitiveActionPermission, TeamMemberStrictManagementPermission]

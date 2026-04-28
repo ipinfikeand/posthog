@@ -2625,3 +2625,25 @@ class TestDatabase(BaseTest, QueryMatchingTest):
         database = Database.create_for(team=self.team)
         persons = database.get_table("persons")
         assert "ext_data" not in persons.fields
+
+    def test_create_for_with_synthetic_user_skips_user_rbac(self):
+        from posthog.auth import ProjectSecretAPIKeyUser
+        from posthog.models.project_secret_api_key import ProjectSecretAPIKey
+
+        psak = ProjectSecretAPIKey.objects.create(
+            team=self.team,
+            label="rbac-shortcircuit",
+            secure_value="sha256$" + "f" * 64,
+            scopes=["endpoint:read"],
+        )
+        synthetic_user = ProjectSecretAPIKeyUser(psak)
+
+        with (
+            patch("posthoganalytics.feature_enabled", return_value=True),
+            patch.object(Database, "_filter_system_tables_for_user") as user_path,
+            patch.object(Database, "_filter_all_scoped_system_tables") as anon_path,
+        ):
+            Database.create_for(team=self.team, user=cast(Any, synthetic_user))
+
+        user_path.assert_not_called()
+        anon_path.assert_called_once()

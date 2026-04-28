@@ -63,9 +63,12 @@ structlog_logger = structlog.get_logger(__name__)
 
 _SECRET_API_KEY_RE = re.compile(r"^phs_[a-zA-Z0-9]+$")
 
+SECRET_API_KEY_BODY_FIELD = "secret_api_key"
+
 SECRET_API_KEY_BODY_COUNTER = Counter(
     "api_auth_secret_api_key_body",
     "Requests where the secret API key is provided in the request body instead of the Authorization header",
+    labelnames=["auth_kind"],
 )
 
 PERSONAL_API_KEY_QUERY_PARAM_COUNTER = Counter(
@@ -311,12 +314,15 @@ class PersonalAPIKeyAuthentication(authentication.BaseAuthentication):
         return cls.keyword
 
 
-def _extract_phs_token(request: Union[HttpRequest, Request]) -> Optional[str]:
+def _extract_phs_token(request: Union[HttpRequest, Request], auth_kind: str) -> Optional[str]:
     """
     Find a `phs_` secret token in the request. Checks the Authorization header first
     (Bearer scheme), then the request body field `secret_api_key`. Used by both
     TeamSecretTokenAuthentication (legacy Team.secret_api_token) and
     ProjectSecretAPIKeyAuthentication (PSAK model).
+
+    `auth_kind` is the value used to label the body-token counter so the two auth
+    paths can be told apart on dashboards. Pass `"team_secret_token"` or `"psak"`.
     """
     if "authorization" in request.headers:
         authorization_match = re.match(r"^Bearer\s+(.+)$", request.headers["authorization"])
@@ -329,13 +335,10 @@ def _extract_phs_token(request: Union[HttpRequest, Request]) -> Optional[str]:
     if not isinstance(request, Request):
         request = Request(request)
 
-    data = request.data
-
-    if data and "secret_api_key" in data:
-        secret_api_key = data["secret_api_key"]
-        if isinstance(secret_api_key, str) and _SECRET_API_KEY_RE.match(secret_api_key):
-            SECRET_API_KEY_BODY_COUNTER.inc()
-            return secret_api_key
+    candidate = (request.data or {}).get(SECRET_API_KEY_BODY_FIELD)
+    if isinstance(candidate, str) and _SECRET_API_KEY_RE.match(candidate):
+        SECRET_API_KEY_BODY_COUNTER.labels(auth_kind=auth_kind).inc()
+        return candidate
 
     return None
 
@@ -343,11 +346,15 @@ def _extract_phs_token(request: Union[HttpRequest, Request]) -> Optional[str]:
 class _TeamScopedSyntheticUser:
     """Common synthetic-principal shape for team-scoped service auth."""
 
+    distinct_id: str
+    email: Optional[str] = None
+
     def __init__(self, team):
         self.team = team
         self.current_team_id = team.id
         self.is_authenticated = True
         self.pk = -1
+        self.id: Optional[int] = None
 
     def has_perm(self, perm, obj=None):
         return False
@@ -362,6 +369,10 @@ class TeamSecretTokenUser(_TeamScopedSyntheticUser):
     via the legacy team-level Team.secret_api_token field.
     """
 
+    def __init__(self, team):
+        super().__init__(team)
+        self.distinct_id = f"team-secret-token-{team.id}"
+
 
 class TeamSecretTokenAuthentication(authentication.BaseAuthentication):
     """
@@ -369,8 +380,7 @@ class TeamSecretTokenAuthentication(authentication.BaseAuthentication):
 
     This is not a ProjectSecretAPIKey (PSAK) model authenticator — it validates the
     `phs_*` token against the legacy per-team secret stored on the Team row. It's
-    intended for endpoints that were gated before PSAK existed
-    (local_evaluation, feature flag remote_config, live debugger breakpoints).
+    intended for endpoints that were gated before PSAK existed.
 
     When authenticated, returns a synthetic TeamSecretTokenUser with the team
     attached, so downstream permission code can resolve team context without a
@@ -384,7 +394,7 @@ class TeamSecretTokenAuthentication(authentication.BaseAuthentication):
     keyword = "Bearer"
 
     def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
-        secret_api_token = _extract_phs_token(request)
+        secret_api_token = _extract_phs_token(request, auth_kind="team_secret_token")
 
         if not secret_api_token:
             return None
@@ -414,6 +424,7 @@ class ProjectSecretAPIKeyUser(_TeamScopedSyntheticUser):
     def __init__(self, project_secret_api_key):
         super().__init__(project_secret_api_key.team)
         self.project_secret_api_key = project_secret_api_key
+        self.distinct_id = f"psak-{project_secret_api_key.team_id}-{project_secret_api_key.id}"
 
 
 class ProjectSecretAPIKeyAuthentication(authentication.BaseAuthentication):
@@ -429,7 +440,7 @@ class ProjectSecretAPIKeyAuthentication(authentication.BaseAuthentication):
     def authenticate(self, request: Union[HttpRequest, Request]) -> Optional[tuple[Any, None]]:
         from posthog.models.project_secret_api_key import ProjectSecretAPIKey, find_project_secret_api_key
 
-        token = _extract_phs_token(request)
+        token = _extract_phs_token(request, auth_kind="psak")
         if not token:
             return None
 
