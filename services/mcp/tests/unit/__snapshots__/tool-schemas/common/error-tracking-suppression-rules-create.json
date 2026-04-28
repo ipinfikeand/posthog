@@ -1,6 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "properties": {
+<<<<<<< HEAD
         "filters": {
             "description": "Optional property-group filters that define which incoming error events should be suppressed. Omit this field or provide an empty `values` array to create a match-all suppression rule.",
             "properties": {
@@ -1828,18 +1829,26 @@
                         ]
                     },
                     "type": "array"
+=======
+        "disabled_data": {
+            "anyOf": [
+                {},
+                {
+                    "type": "null"
+>>>>>>> 6492e986898 (test(mcp): update unit test snapshots)
                 }
-            },
-            "required": ["type", "values"],
-            "type": "object"
+            ]
+        },
+        "filters": {},
+        "order_key": {
+            "maximum": 2147483647,
+            "minimum": -2147483648,
+            "type": "number"
         },
         "sampling_rate": {
-            "default": 1,
-            "description": "Fraction of matching events to suppress. Use `1.0` to suppress all matching events.",
-            "maximum": 1,
-            "minimum": 0,
             "type": "number"
         }
     },
+    "required": ["filters", "order_key"],
     "type": "object"
 }

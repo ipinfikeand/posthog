@@ -173,16 +173,26 @@
                     "templating": {
                         "anyOf": [
                             {
+                                "const": true,
                                 "type": "boolean"
                             },
                             {
-                                "enum": ["hog", "liquid"],
+                                "const": false,
+                                "type": "boolean"
+                            },
+                            {
+                                "const": "hog",
+                                "type": "string"
+                            },
+                            {
+                                "const": "liquid",
                                 "type": "string"
                             }
-                        ]
+                        ],
+                        "description": "* `True` - True\n* `False` - False\n* `hog` - hog\n* `liquid` - liquid"
                     },
                     "type": {
-                        "description": "* `string` - string\n* `number` - number\n* `boolean` - boolean\n* `dictionary` - dictionary\n* `choice` - choice\n* `json` - json\n* `integration` - integration\n* `integration_field` - integration_field\n* `email` - email\n* `native_email` - native_email\n* `posthog_assignee` - posthog_assignee\n* `posthog_ticket_tags` - posthog_ticket_tags\n* `posthog_business_hours` - posthog_business_hours",
+                        "description": "* `string` - string\n* `number` - number\n* `boolean` - boolean\n* `dictionary` - dictionary\n* `choice` - choice\n* `json` - json\n* `integration` - integration\n* `integration_field` - integration_field\n* `email` - email\n* `native_email` - native_email\n* `posthog_assignee` - posthog_assignee\n* `posthog_ticket_tags` - posthog_ticket_tags",
                         "enum": [
                             "string",
                             "number",
@@ -195,8 +205,7 @@
                             "email",
                             "native_email",
                             "posthog_assignee",
-                            "posthog_ticket_tags",
-                            "posthog_business_hours"
+                            "posthog_ticket_tags"
                         ],
                         "type": "string"
                     }
@@ -328,16 +337,26 @@
                                         "templating": {
                                             "anyOf": [
                                                 {
+                                                    "const": true,
                                                     "type": "boolean"
                                                 },
                                                 {
-                                                    "enum": ["hog", "liquid"],
+                                                    "const": false,
+                                                    "type": "boolean"
+                                                },
+                                                {
+                                                    "const": "hog",
+                                                    "type": "string"
+                                                },
+                                                {
+                                                    "const": "liquid",
                                                     "type": "string"
                                                 }
-                                            ]
+                                            ],
+                                            "description": "* `True` - True\n* `False` - False\n* `hog` - hog\n* `liquid` - liquid"
                                         },
                                         "type": {
-                                            "description": "* `string` - string\n* `number` - number\n* `boolean` - boolean\n* `dictionary` - dictionary\n* `choice` - choice\n* `json` - json\n* `integration` - integration\n* `integration_field` - integration_field\n* `email` - email\n* `native_email` - native_email\n* `posthog_assignee` - posthog_assignee\n* `posthog_ticket_tags` - posthog_ticket_tags\n* `posthog_business_hours` - posthog_business_hours",
+                                            "description": "* `string` - string\n* `number` - number\n* `boolean` - boolean\n* `dictionary` - dictionary\n* `choice` - choice\n* `json` - json\n* `integration` - integration\n* `integration_field` - integration_field\n* `email` - email\n* `native_email` - native_email\n* `posthog_assignee` - posthog_assignee\n* `posthog_ticket_tags` - posthog_ticket_tags",
                                             "enum": [
                                                 "string",
                                                 "number",
@@ -350,8 +369,7 @@
                                                 "email",
                                                 "native_email",
                                                 "posthog_assignee",
-                                                "posthog_ticket_tags",
-                                                "posthog_business_hours"
+                                                "posthog_ticket_tags"
                                             ],
                                             "type": "string"
                                         }
