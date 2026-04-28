@@ -888,9 +888,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.13
   '''
   SELECT 1 AS "a"
-  FROM "platform_features_propertyaccesscontrol"
-  WHERE ("platform_features_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("platform_features_propertyaccesscontrol"."property_definition_id" IS NULL))
+  FROM "access_control_propertyaccesscontrol"
+  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
+         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
   LIMIT 1
   '''
 # ---
@@ -1451,9 +1451,9 @@
 <<<<<<< HEAD
 =======
   SELECT 1 AS "a"
-  FROM "platform_features_propertyaccesscontrol"
-  WHERE ("platform_features_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("platform_features_propertyaccesscontrol"."property_definition_id" IS NULL))
+  FROM "access_control_propertyaccesscontrol"
+  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
+         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
   LIMIT 1
   '''
 # ---
@@ -1543,57 +1543,15 @@
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
   '''
   SELECT 1 AS "a"
-  FROM "platform_features_propertyaccesscontrol"
-  WHERE ("platform_features_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("platform_features_propertyaccesscontrol"."property_definition_id" IS NULL))
+  FROM "access_control_propertyaccesscontrol"
+  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
+         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
   LIMIT 1
   '''
 # ---
 # name: TestInsight.test_listing_insights_does_not_nplus1.25
   '''
-<<<<<<< HEAD
   SELECT "posthog_dashboardtile"."dashboard_id" AS "dashboard_id"
-=======
-  SELECT "posthog_organization"."id",
-         "posthog_organization"."name",
-         "posthog_organization"."slug",
-         "posthog_organization"."logo_media_id",
-         "posthog_organization"."created_at",
-         "posthog_organization"."updated_at",
-         "posthog_organization"."is_active",
-         "posthog_organization"."is_not_active_reason",
-         "posthog_organization"."session_cookie_age",
-         "posthog_organization"."is_member_join_email_enabled",
-         "posthog_organization"."is_ai_data_processing_approved",
-         "posthog_organization"."enforce_2fa",
-         "posthog_organization"."members_can_invite",
-         "posthog_organization"."members_can_use_personal_api_keys",
-         "posthog_organization"."allow_publicly_shared_resources",
-         "posthog_organization"."default_role_id",
-         "posthog_organization"."plugins_access_level",
-         "posthog_organization"."for_internal_metrics",
-         "posthog_organization"."default_experiment_stats_method",
-         "posthog_organization"."default_anonymize_ips",
-         "posthog_organization"."is_hipaa",
-         "posthog_organization"."is_pending_deletion",
-         "posthog_organization"."customer_id",
-         "posthog_organization"."available_product_features",
-         "posthog_organization"."usage",
-         "posthog_organization"."never_drop_data",
-         "posthog_organization"."customer_trust_scores",
-         "posthog_organization"."setup_section_2_completed",
-         "posthog_organization"."personalization",
-         "posthog_organization"."domain_whitelist",
-         "posthog_organization"."is_platform"
-  FROM "posthog_organization"
-  WHERE "posthog_organization"."id" = '00000000-0000-0000-0000-000000000000'::uuid
-  LIMIT 21
-  '''
-# ---
-# name: TestInsight.test_listing_insights_does_not_nplus1.26
-  '''
-  SELECT "posthog_dashboardtile"."dashboard_id"
->>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
   FROM "posthog_dashboardtile"
   INNER JOIN "posthog_dashboard" ON ("posthog_dashboardtile"."dashboard_id" = "posthog_dashboard"."id")
   WHERE (NOT ("posthog_dashboardtile"."deleted"
@@ -1603,6 +1561,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.24
 =======
 <<<<<<< HEAD
@@ -1611,6 +1570,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.27
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.26
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_dashboard"."id",
          "posthog_dashboard"."name",
@@ -1643,6 +1605,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.25
 =======
 <<<<<<< HEAD
@@ -1651,6 +1614,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.28
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.27
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_tag"."name" AS "tag__name"
   FROM "posthog_taggeditem"
@@ -1658,6 +1624,7 @@
   WHERE "posthog_taggeditem"."insight_id" = 99999
   '''
 # ---
+<<<<<<< HEAD
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.26
 =======
@@ -1667,6 +1634,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.29
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.28
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT COUNT(*) AS "__count"
   FROM "posthog_dashboarditem"
@@ -1674,11 +1644,51 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.27
 =======
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.26
 =======
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.29
+  '''
+  SELECT "posthog_user"."id",
+         "posthog_user"."password",
+         "posthog_user"."last_login",
+         "posthog_user"."first_name",
+         "posthog_user"."last_name",
+         "posthog_user"."is_staff",
+         "posthog_user"."date_joined",
+         "posthog_user"."uuid",
+         "posthog_user"."current_organization_id",
+         "posthog_user"."current_team_id",
+         "posthog_user"."email",
+         "posthog_user"."pending_email",
+         "posthog_user"."distinct_id",
+         "posthog_user"."is_email_verified",
+         "posthog_user"."requested_2fa_reset_at",
+         "posthog_user"."has_seen_product_intro_for",
+         "posthog_user"."strapi_id",
+         "posthog_user"."is_active",
+         "posthog_user"."role_at_organization",
+         "posthog_user"."theme_mode",
+         "posthog_user"."partial_notification_settings",
+         "posthog_user"."anonymize_data",
+         "posthog_user"."allow_impersonation",
+         "posthog_user"."toolbar_mode",
+         "posthog_user"."hedgehog_config",
+         "posthog_user"."allow_sidebar_suggestions",
+         "posthog_user"."shortcut_position",
+         "posthog_user"."passkeys_enabled_for_2fa",
+         "posthog_user"."events_column_config",
+         "posthog_user"."email_opt_in"
+  FROM "posthog_user"
+  WHERE "posthog_user"."id" = 99999
+  LIMIT 21
+  '''
+# ---
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
 # name: TestInsight.test_listing_insights_does_not_nplus1.3
   '''
   SELECT "posthog_organizationmembership"."id",
@@ -1687,6 +1697,7 @@
          "posthog_organizationmembership"."level",
          "posthog_organizationmembership"."joined_at",
          "posthog_organizationmembership"."updated_at",
+         "posthog_organizationmembership"."invited_by_id",
          "posthog_organization"."id",
          "posthog_organization"."name",
          "posthog_organization"."slug",
@@ -1726,6 +1737,7 @@
   '''
 # ---
 # name: TestInsight.test_listing_insights_does_not_nplus1.30
+<<<<<<< HEAD
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
   '''
@@ -1773,6 +1785,8 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.31
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_organization"."id",
          "posthog_organization"."name",
@@ -1811,6 +1825,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.29
 =======
 <<<<<<< HEAD
@@ -1819,6 +1834,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.32
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.31
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_team"."id",
          "posthog_team"."uuid",
@@ -1948,60 +1966,13 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.29
-  '''
-  SELECT "posthog_organizationmembership"."id",
-         "posthog_organizationmembership"."organization_id",
-         "posthog_organizationmembership"."user_id",
-         "posthog_organizationmembership"."level",
-         "posthog_organizationmembership"."joined_at",
-         "posthog_organizationmembership"."updated_at",
-         "posthog_organizationmembership"."invited_by_id",
-         "posthog_organization"."id",
-         "posthog_organization"."name",
-         "posthog_organization"."slug",
-         "posthog_organization"."logo_media_id",
-         "posthog_organization"."created_at",
-         "posthog_organization"."updated_at",
-         "posthog_organization"."is_active",
-         "posthog_organization"."is_not_active_reason",
-         "posthog_organization"."session_cookie_age",
-         "posthog_organization"."is_member_join_email_enabled",
-         "posthog_organization"."is_ai_data_processing_approved",
-         "posthog_organization"."enforce_2fa",
-         "posthog_organization"."members_can_invite",
-         "posthog_organization"."members_can_use_personal_api_keys",
-         "posthog_organization"."allow_publicly_shared_resources",
-         "posthog_organization"."default_role_id",
-         "posthog_organization"."plugins_access_level",
-         "posthog_organization"."for_internal_metrics",
-         "posthog_organization"."default_experiment_stats_method",
-         "posthog_organization"."default_anonymize_ips",
-         "posthog_organization"."is_hipaa",
-         "posthog_organization"."is_pending_deletion",
-         "posthog_organization"."customer_id",
-         "posthog_organization"."available_product_features",
-         "posthog_organization"."usage",
-         "posthog_organization"."never_drop_data",
-         "posthog_organization"."customer_trust_scores",
-         "posthog_organization"."setup_section_2_completed",
-         "posthog_organization"."personalization",
-         "posthog_organization"."domain_whitelist",
-         "posthog_organization"."is_platform"
-  FROM "posthog_organizationmembership"
-  INNER JOIN "posthog_organization" ON ("posthog_organizationmembership"."organization_id" = "posthog_organization"."id")
-  WHERE ("posthog_organizationmembership"."organization_id" = '00000000-0000-0000-0000-000000000000'::uuid
-         AND "posthog_organizationmembership"."user_id" = 99999)
-  LIMIT 21
-  '''
-# ---
->>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
-# name: TestInsight.test_listing_insights_does_not_nplus1.3
 =======
-# name: TestInsight.test_listing_insights_does_not_nplus1.33
->>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
+# name: TestInsight.test_listing_insights_does_not_nplus1.32
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_organizationmembership"."id",
          "posthog_organizationmembership"."organization_id",
@@ -2049,10 +2020,12 @@
   '''
 # ---
 <<<<<<< HEAD
-# name: TestInsight.test_listing_insights_does_not_nplus1.30
+>>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+# name: TestInsight.test_listing_insights_does_not_nplus1.3
 =======
-# name: TestInsight.test_listing_insights_does_not_nplus1.34
->>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
+=======
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
+# name: TestInsight.test_listing_insights_does_not_nplus1.33
   '''
   SELECT "posthog_organizationmembership"."id",
          "posthog_organizationmembership"."organization_id",
@@ -2146,6 +2119,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.32
 =======
 <<<<<<< HEAD
@@ -2154,6 +2128,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.35
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.34
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_organizationmembership"."id",
          "posthog_organizationmembership"."organization_id",
@@ -2199,6 +2176,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.33
 =======
 <<<<<<< HEAD
@@ -2207,6 +2185,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.36
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.35
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT COUNT(*)
   FROM
@@ -2220,6 +2201,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.34
 =======
 <<<<<<< HEAD
@@ -2228,6 +2210,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.37
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.36
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_dashboarditem"."id",
          "posthog_dashboarditem"."name",
@@ -2401,6 +2386,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.35
 =======
 <<<<<<< HEAD
@@ -2409,6 +2395,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.38
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.37
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT ("posthog_dashboardtile"."insight_id") AS "_prefetch_related_val_insight_id",
          "posthog_dashboard"."id"
@@ -2423,6 +2412,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.36
 =======
 <<<<<<< HEAD
@@ -2431,6 +2421,9 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.39
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.38
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_dashboardtile"."id",
          "posthog_dashboardtile"."dashboard_id",
@@ -2448,6 +2441,7 @@
                                                       5 /* ... */))
   '''
 # ---
+<<<<<<< HEAD
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.37
 =======
@@ -2503,6 +2497,9 @@
 # ---
 # name: TestInsight.test_listing_insights_does_not_nplus1.40
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.39
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
 <<<<<<< HEAD
 =======
@@ -2569,11 +2566,53 @@
                                                       5 /* ... */)
   '''
 # ---
-<<<<<<< HEAD
-# name: TestInsight.test_listing_insights_does_not_nplus1.37
-=======
-# name: TestInsight.test_listing_insights_does_not_nplus1.41
->>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
+# name: TestInsight.test_listing_insights_does_not_nplus1.4
+  '''
+  SELECT "ee_accesscontrol"."id",
+         "ee_accesscontrol"."team_id",
+         "ee_accesscontrol"."access_level",
+         "ee_accesscontrol"."resource",
+         "ee_accesscontrol"."resource_id",
+         "ee_accesscontrol"."organization_member_id",
+         "ee_accesscontrol"."role_id",
+         "ee_accesscontrol"."created_by_id",
+         "ee_accesscontrol"."created_at",
+         "ee_accesscontrol"."updated_at"
+  FROM "ee_accesscontrol"
+  LEFT OUTER JOIN "posthog_organizationmembership" ON ("ee_accesscontrol"."organization_member_id" = "posthog_organizationmembership"."id")
+  WHERE (("ee_accesscontrol"."organization_member_id" IS NULL
+          AND "ee_accesscontrol"."resource" = 'project'
+          AND "ee_accesscontrol"."resource_id" = '99999'
+          AND "ee_accesscontrol"."role_id" IS NULL
+          AND "ee_accesscontrol"."team_id" = 99999)
+         OR ("posthog_organizationmembership"."user_id" = 99999
+             AND "ee_accesscontrol"."resource" = 'project'
+             AND "ee_accesscontrol"."resource_id" = '99999'
+             AND "ee_accesscontrol"."role_id" IS NULL
+             AND "ee_accesscontrol"."team_id" = 99999)
+         OR ("ee_accesscontrol"."organization_member_id" IS NULL
+             AND "ee_accesscontrol"."resource" = 'insight'
+             AND "ee_accesscontrol"."resource_id" IS NULL
+             AND "ee_accesscontrol"."role_id" IS NULL
+             AND "ee_accesscontrol"."team_id" = 99999)
+         OR ("posthog_organizationmembership"."user_id" = 99999
+             AND "ee_accesscontrol"."resource" = 'insight'
+             AND "ee_accesscontrol"."resource_id" IS NULL
+             AND "ee_accesscontrol"."role_id" IS NULL
+             AND "ee_accesscontrol"."team_id" = 99999)
+         OR ("ee_accesscontrol"."organization_member_id" IS NULL
+             AND "ee_accesscontrol"."resource" = 'insight'
+             AND "ee_accesscontrol"."resource_id" IS NOT NULL
+             AND "ee_accesscontrol"."role_id" IS NULL
+             AND "ee_accesscontrol"."team_id" = 99999)
+         OR ("posthog_organizationmembership"."user_id" = 99999
+             AND "ee_accesscontrol"."resource" = 'insight'
+             AND "ee_accesscontrol"."resource_id" IS NOT NULL
+             AND "ee_accesscontrol"."role_id" IS NULL
+             AND "ee_accesscontrol"."team_id" = 99999))
+  '''
+# ---
+# name: TestInsight.test_listing_insights_does_not_nplus1.40
   '''
 >>>>>>> dcd50a73047 (fix: consider property restrictions when fetching query results from cache)
   SELECT "posthog_taggeditem"."id",
@@ -2595,8 +2634,11 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.38
 =======
+=======
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.37
 =======
@@ -2606,7 +2648,13 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.42
 >>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
 >>>>>>> dcd50a73047 (fix: consider property restrictions when fetching query results from cache)
+<<<<<<< HEAD
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
+=======
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.41
+>>>>>>> 60e78a03cf9 (test(backend): update query snapshots)
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
   SELECT "posthog_taggeditem"."id",
          "posthog_taggeditem"."tag_id",
@@ -2631,7 +2679,10 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.38
   '''
@@ -2704,6 +2755,9 @@
 >>>>>>> dcd50a73047 (fix: consider property restrictions when fetching query results from cache)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
 # name: TestInsight.test_listing_insights_does_not_nplus1.39
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.42
+>>>>>>> 60e78a03cf9 (test(backend): update query snapshots)
   '''
   SELECT "ee_accesscontrol"."id",
          "ee_accesscontrol"."team_id",
@@ -2769,56 +2823,7 @@
              AND "ee_accesscontrol"."team_id" = 99999))
   '''
 # ---
-# name: TestInsight.test_listing_insights_does_not_nplus1.4
-  '''
-  SELECT "ee_accesscontrol"."id",
-         "ee_accesscontrol"."team_id",
-         "ee_accesscontrol"."access_level",
-         "ee_accesscontrol"."resource",
-         "ee_accesscontrol"."resource_id",
-         "ee_accesscontrol"."organization_member_id",
-         "ee_accesscontrol"."role_id",
-         "ee_accesscontrol"."created_by_id",
-         "ee_accesscontrol"."created_at",
-         "ee_accesscontrol"."updated_at"
-  FROM "ee_accesscontrol"
-  LEFT OUTER JOIN "posthog_organizationmembership" ON ("ee_accesscontrol"."organization_member_id" = "posthog_organizationmembership"."id")
-  WHERE (("ee_accesscontrol"."organization_member_id" IS NULL
-          AND "ee_accesscontrol"."resource" = 'project'
-          AND "ee_accesscontrol"."resource_id" = '99999'
-          AND "ee_accesscontrol"."role_id" IS NULL
-          AND "ee_accesscontrol"."team_id" = 99999)
-         OR ("posthog_organizationmembership"."user_id" = 99999
-             AND "ee_accesscontrol"."resource" = 'project'
-             AND "ee_accesscontrol"."resource_id" = '99999'
-             AND "ee_accesscontrol"."role_id" IS NULL
-             AND "ee_accesscontrol"."team_id" = 99999)
-         OR ("ee_accesscontrol"."organization_member_id" IS NULL
-             AND "ee_accesscontrol"."resource" = 'insight'
-             AND "ee_accesscontrol"."resource_id" IS NULL
-             AND "ee_accesscontrol"."role_id" IS NULL
-             AND "ee_accesscontrol"."team_id" = 99999)
-         OR ("posthog_organizationmembership"."user_id" = 99999
-             AND "ee_accesscontrol"."resource" = 'insight'
-             AND "ee_accesscontrol"."resource_id" IS NULL
-             AND "ee_accesscontrol"."role_id" IS NULL
-             AND "ee_accesscontrol"."team_id" = 99999)
-         OR ("ee_accesscontrol"."organization_member_id" IS NULL
-             AND "ee_accesscontrol"."resource" = 'insight'
-             AND "ee_accesscontrol"."resource_id" IS NOT NULL
-             AND "ee_accesscontrol"."role_id" IS NULL
-             AND "ee_accesscontrol"."team_id" = 99999)
-         OR ("posthog_organizationmembership"."user_id" = 99999
-             AND "ee_accesscontrol"."resource" = 'insight'
-             AND "ee_accesscontrol"."resource_id" IS NOT NULL
-             AND "ee_accesscontrol"."role_id" IS NULL
-             AND "ee_accesscontrol"."team_id" = 99999))
-  '''
-# ---
-# name: TestInsight.test_listing_insights_does_not_nplus1.40
-=======
 # name: TestInsight.test_listing_insights_does_not_nplus1.43
->>>>>>> 202c41cfdf2 (test(backend): update query snapshots)
   '''
   SELECT "ee_accesscontrol"."id",
          "ee_accesscontrol"."team_id",
