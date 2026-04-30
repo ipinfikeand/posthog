@@ -8220,12 +8220,6 @@
 # ---
 # name: TestSessionRecordings.test_listing_recordings_is_not_nplus1_for_persons.126
   '''
-<<<<<<< HEAD
-  SELECT 1 AS "a"
-  FROM "access_control_propertyaccesscontrol"
-  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
-=======
   SELECT "posthog_team"."id",
          "posthog_team"."uuid",
          "posthog_team"."organization_id",
@@ -8351,18 +8345,11 @@
   INNER JOIN "posthog_organization" ON ("posthog_team"."organization_id" = "posthog_organization"."id")
   WHERE "posthog_team"."id" = 99999
   ORDER BY "posthog_team"."id" ASC
->>>>>>> b7ba996af35 (chore: gate property level access control behind billing feature)
   LIMIT 1
   '''
 # ---
 # name: TestSessionRecordings.test_listing_recordings_is_not_nplus1_for_persons.127
   '''
-<<<<<<< HEAD
-  SELECT 1 AS "a"
-  FROM "access_control_propertyaccesscontrol"
-  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
-=======
   SELECT "posthog_team"."id",
          "posthog_team"."uuid",
          "posthog_team"."organization_id",
@@ -8488,7 +8475,6 @@
   INNER JOIN "posthog_organization" ON ("posthog_team"."organization_id" = "posthog_organization"."id")
   WHERE "posthog_team"."id" = 99999
   ORDER BY "posthog_team"."id" ASC
->>>>>>> b7ba996af35 (chore: gate property level access control behind billing feature)
   LIMIT 1
   '''
 # ---
@@ -14037,12 +14023,6 @@
 # ---
 # name: TestSessionRecordings.test_listing_recordings_is_not_nplus1_for_persons.58
   '''
-<<<<<<< HEAD
-  SELECT 1 AS "a"
-  FROM "access_control_propertyaccesscontrol"
-  WHERE ("access_control_propertyaccesscontrol"."team_id" = 99999
-         AND NOT ("access_control_propertyaccesscontrol"."property_definition_id" IS NULL))
-=======
   SELECT "posthog_team"."id",
          "posthog_team"."uuid",
          "posthog_team"."organization_id",
@@ -14168,7 +14148,6 @@
   INNER JOIN "posthog_organization" ON ("posthog_team"."organization_id" = "posthog_organization"."id")
   WHERE "posthog_team"."id" = 99999
   ORDER BY "posthog_team"."id" ASC
->>>>>>> b7ba996af35 (chore: gate property level access control behind billing feature)
   LIMIT 1
   '''
 # ---

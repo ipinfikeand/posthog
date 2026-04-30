@@ -429,6 +429,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -460,6 +461,8 @@
 =======
 >>>>>>> b7ba996af35 (chore: gate property level access control behind billing feature)
 >>>>>>> 37cfe041a0b (chore: gate property level access control behind billing feature)
+=======
+>>>>>>> 6e0d0345947 (test(backend): update query snapshots)
         FROM events
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
@@ -489,8 +492,6 @@
                     optimize_min_equality_disjunction_chain_length=4294967295,
                     allow_experimental_join_condition=1,
                     use_hive_partitioning=0
-<<<<<<< HEAD
-=======
   '''
 # ---
 # name: TestWebStatsTableQueryRunner.test_avg_time_on_page_multiple_users.2
@@ -553,6 +554,7 @@
                events.properties,
                events.timestamp
         FROM events
+<<<<<<< HEAD
         WHERE and(equals(events.team_id, 99999), greaterOrEquals(toDate(events.timestamp), '2023-12-01'), lessOrEquals(toDate(events.timestamp), '2023-12-16'))) AS events
      WHERE and(or(equals(events.event, '$pageview'), equals(events.event, '$pageleave'), equals(events.event, '$screen')), isNotNull(replaceRegexpAll(nullIf(nullIf(JSONExtractRaw(events.properties, '$prev_pageview_pathname'), ''), 'null'), '^"|"$', '')), isNotNull(replaceRegexpAll(nullIf(nullIf(JSONExtractRaw(events.properties, '$prev_pageview_duration'), ''), 'null'), '^"|"$', '')), or(and(greaterOrEquals(toTimeZone(events.timestamp, 'UTC'), assumeNotNull(toDateTime('2023-12-02 12:00:00', 'UTC'))), lessOrEquals(toTimeZone(events.timestamp, 'UTC'), assumeNotNull(toDateTime('2023-12-15 23:59:59', 'UTC')))), 0), 1, 1)
      GROUP BY breakdown_value) AS time_on_page ON equals(counts.breakdown_value, time_on_page.breakdown_value)
@@ -716,6 +718,8 @@
 =======
 >>>>>>> 8769c1c4a68 (test(backend): update query snapshots)
         FROM events
+=======
+>>>>>>> 6e0d0345947 (test(backend): update query snapshots)
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
                   if(ifNull(equals(uniqMerge(raw_sessions.pageview_uniq), 0), 0), NULL, not(or(ifNull(greater(uniqMerge(raw_sessions.pageview_uniq), 1), 0), ifNull(greater(uniqMerge(raw_sessions.autocapture_uniq), 0), 0), greaterOrEquals(dateDiff('second', min(toTimeZone(raw_sessions.min_timestamp, 'UTC')), max(toTimeZone(raw_sessions.max_timestamp, 'UTC'))), 10)))) AS `$is_bounce`,
@@ -984,10 +988,14 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user.2
 =======
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user
 >>>>>>> 8769c1c4a68 (test(backend): update query snapshots)
+=======
+# name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user
+>>>>>>> 6e0d0345947 (test(backend): update query snapshots)
   '''
   
   SELECT timestamp
@@ -1077,6 +1085,7 @@
   '''
 # ---
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestWebStatsTableQueryRunner.test_bounce_rate.2
   '''
 >>>>>>> 14434d2e8d8 (feat: enforce field-level access control in hogql 'properties' column)
@@ -1121,6 +1130,8 @@
 # ---
 =======
 >>>>>>> 8769c1c4a68 (test(backend): update query snapshots)
+=======
+>>>>>>> 6e0d0345947 (test(backend): update query snapshots)
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user.2
   '''
   SELECT counts.breakdown_value AS `context.columns.breakdown_value`,
@@ -1198,6 +1209,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
 >>>>>>> 869d156d9a4 (feat: enforce field-level access control in hogql 'properties' column)
@@ -1224,6 +1236,8 @@
 >>>>>>> 2e8fa4aa5ed (test(backend): update query snapshots)
 =======
 >>>>>>> 8769c1c4a68 (test(backend): update query snapshots)
+=======
+>>>>>>> 6e0d0345947 (test(backend): update query snapshots)
         GROUP BY session_id,
                  breakdown_value)
      GROUP BY breakdown_value) AS bounce ON equals(counts.breakdown_value, bounce.breakdown_value)
