@@ -430,9 +430,12 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> c537f818d2a (test(backend): update query snapshots)
 =======
 >>>>>>> f3ab6d6b298 (test(backend): update query snapshots)
+=======
+>>>>>>> 33850df36bd (test(backend): update query snapshots)
         FROM events
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
@@ -532,9 +535,14 @@
 >>>>>>> f7f1aaee3a6 (test(backend): update query snapshots)
 =======
 >>>>>>> 2f86f1d95f6 (test(backend): update query snapshots)
+<<<<<<< HEAD
 >>>>>>> c537f818d2a (test(backend): update query snapshots)
 =======
 >>>>>>> f3ab6d6b298 (test(backend): update query snapshots)
+=======
+=======
+>>>>>>> 0f116994784 (test(backend): update query snapshots)
+>>>>>>> 33850df36bd (test(backend): update query snapshots)
         FROM events
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
@@ -902,6 +910,17 @@
 # ---
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user.2
   '''
+  
+  SELECT timestamp
+  from events
+  WHERE team_id = 99999
+    AND timestamp > '2015-01-01'
+  order by timestamp
+  limit 1
+  '''
+# ---
+# name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user.2
+  '''
   SELECT counts.breakdown_value AS `context.columns.breakdown_value`,
          tuple(counts.visitors, counts.previous_visitors) AS `context.columns.visitors`,
          tuple(counts.views, counts.previous_views) AS `context.columns.views`,
@@ -972,6 +991,7 @@
            WHERE and(equals(raw_sessions.team_id, 99999), greaterOrEquals(fromUnixTimestamp(intDiv(toUInt64(bitShiftRight(raw_sessions.session_id_v7, 80)), 1000)), minus(assumeNotNull(toDateTime('2023-12-02 12:00:00', 'UTC')), toIntervalDay(3))), lessOrEquals(fromUnixTimestamp(intDiv(toUInt64(bitShiftRight(raw_sessions.session_id_v7, 80)), 1000)), plus(assumeNotNull(toDateTime('2023-12-15 23:59:59', 'UTC')), toIntervalDay(3))))
            GROUP BY raw_sessions.session_id_v7) AS events__session ON equals(events.`$session_id_uuid`, events__session.session_id_v7)
         WHERE and(or(equals(events.event, '$pageview'), equals(events.event, '$screen')), or(and(greaterOrEquals(toTimeZone(events.timestamp, 'UTC'), assumeNotNull(toDateTime('2023-12-02 12:00:00', 'UTC'))), lessOrEquals(toTimeZone(events.timestamp, 'UTC'), assumeNotNull(toDateTime('2023-12-15 23:59:59', 'UTC')))), 0), 1, 1)
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -1114,9 +1134,14 @@
 >>>>>>> f7f1aaee3a6 (test(backend): update query snapshots)
 =======
 >>>>>>> 2f86f1d95f6 (test(backend): update query snapshots)
+<<<<<<< HEAD
 >>>>>>> c537f818d2a (test(backend): update query snapshots)
 =======
 >>>>>>> f3ab6d6b298 (test(backend): update query snapshots)
+=======
+=======
+>>>>>>> 0f116994784 (test(backend): update query snapshots)
+>>>>>>> 33850df36bd (test(backend): update query snapshots)
         GROUP BY session_id,
                  breakdown_value)
      GROUP BY breakdown_value) AS bounce ON equals(counts.breakdown_value, bounce.breakdown_value)
