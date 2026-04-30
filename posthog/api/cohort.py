@@ -384,9 +384,11 @@ class RemovePersonRequestSerializer(serializers.Serializer):
 
 
 class CohortCSVImportSerializer(serializers.ModelSerializer):
-    duration_seconds = serializers.ReadOnlyField()
-    is_completed = serializers.ReadOnlyField()
-    is_successful = serializers.ReadOnlyField()
+    duration_seconds = serializers.ReadOnlyField(
+        help_text="Total seconds between started_at and finished_at, null while still running."
+    )
+    is_completed = serializers.ReadOnlyField(help_text="True once the async matching/insertion stage finishes.")
+    is_successful = serializers.ReadOnlyField(help_text="True when the import completed without recording an error.")
 
     class Meta:
         model = CohortCSVImport
@@ -412,6 +414,23 @@ class CohortCSVImportSerializer(serializers.ModelSerializer):
             "is_successful",
         ]
         read_only_fields = fields
+
+
+class CohortCSVImportListResponseSerializer(serializers.Serializer):
+    """Paginated response shape for `csv_imports` endpoint."""
+
+    count = serializers.IntegerField(help_text="Total number of import records for the cohort.")
+    next = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="Query string for the next page (`?limit=...&offset=...`), or null if there are no more pages.",
+    )
+    previous = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="Query string for the previous page, or null when on the first page.",
+    )
+    results = CohortCSVImportSerializer(many=True)
 
 
 class CohortCalculationHistorySerializer(serializers.ModelSerializer):
@@ -1653,6 +1672,25 @@ class CohortViewSet(TeamAndOrgViewSetMixin, ForbidDestroyModel, viewsets.ModelVi
             }
         )
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="limit",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Maximum number of import records to return per page (defaults to 20).",
+            ),
+            OpenApiParameter(
+                name="offset",
+                type=int,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Number of records to skip before starting to return results.",
+            ),
+        ],
+        responses={200: CohortCSVImportListResponseSerializer},
+    )
     @action(methods=["GET"], detail=True, required_scopes=["cohort:read"], url_path="csv_imports")
     def csv_imports(self, request: request.Request, **kwargs):
         """List CSV import attempts for this cohort, most recent first."""
