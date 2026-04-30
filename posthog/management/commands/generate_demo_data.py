@@ -14,12 +14,12 @@ from django.core.management.base import BaseCommand
 from posthog.api.person import PERSON_DEFAULT_DISPLAY_NAME_PROPERTIES
 from posthog.demo.dashboard_template_seeds import seed_dev_dashboard_templates
 from posthog.demo.matrix import Matrix, MatrixManager
+from posthog.demo.matrix.persons_db_sync import get_group_type_mapping_count
 from posthog.demo.products.hedgebox import HedgeboxMatrix
 from posthog.demo.products.spikegpt import SpikeGPTMatrix
 from posthog.management.commands.sync_feature_flags_from_api import sync_feature_flags_from_api
 from posthog.models import User
 from posthog.models.file_system.user_product_list import UserProductList
-from posthog.models.group_type_mapping import GroupTypeMapping
 from posthog.models.team.setup_tasks import SetupTaskId
 from posthog.models.team.team import Team
 from posthog.products import Products
@@ -140,14 +140,7 @@ class Command(BaseCommand):
             days_past=options["days_past"],
             days_future=options["days_future"],
             n_clusters=options["n_clusters"],
-            group_type_index_offset=(
-                # nosemgrep: no-direct-persons-db-orm
-                GroupTypeMapping.objects.filter(
-                    project_id=existing_team.project_id
-                ).count()  # nosemgrep: no-direct-persons-db-orm
-                if existing_team
-                else 0  # nosemgrep: no-direct-persons-db-orm
-            ),
+            group_type_index_offset=(get_group_type_mapping_count(existing_team.project_id) if existing_team else 0),
         )
         print("Running simulation...")
         matrix.simulate()
