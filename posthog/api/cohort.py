@@ -903,9 +903,7 @@ class CohortSerializer(serializers.ModelSerializer):
             self._record_failed_csv_import(cohort, filename, "format_error", CSVConfig.ErrorMessages.FORMAT_ERROR)
             raise ValidationError({"csv": [CSVConfig.ErrorMessages.FORMAT_ERROR]})
         elif isinstance(e, ValidationError):
-            csv_errors = (
-                e.detail.get("csv") if isinstance(e.detail, dict) else None  # type: ignore[union-attr]
-            )
+            csv_errors = e.detail.get("csv") if isinstance(e.detail, dict) else None
             error_message = (
                 csv_errors[0] if isinstance(csv_errors, list) and csv_errors else CSVConfig.ErrorMessages.GENERIC_ERROR
             )
