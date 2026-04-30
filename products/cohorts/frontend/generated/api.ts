@@ -185,6 +185,24 @@ export const cohortsCalculationHistoryRetrieve = async (
     })
 }
 
+/**
+ * List CSV import attempts for this cohort, most recent first.
+ */
+export const getCohortsCsvImportsRetrieveUrl = (projectId: string, id: number) => {
+    return `/api/projects/${projectId}/cohorts/${id}/csv_imports/`
+}
+
+export const cohortsCsvImportsRetrieve = async (
+    projectId: string,
+    id: number,
+    options?: RequestInit
+): Promise<void> => {
+    return apiMutator<void>(getCohortsCsvImportsRetrieveUrl(projectId, id), {
+        ...options,
+        method: 'GET',
+    })
+}
+
 export const getCohortsPersonsRetrieveUrl = (projectId: string, id: number, params?: CohortsPersonsRetrieveParams) => {
     const normalizedParams = new URLSearchParams()
 
