@@ -218,7 +218,7 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
         },
 
         setScopeRadioValue: ({ key, action }: { key: string; action: string }) => {
-            const newScopes = (values.editingKey.scopes || []).filter((s: string) => !s.startsWith(key))
+            const newScopes = (values.editingKey.scopes || []).filter((s: string) => !s.startsWith(key + ':'))
             if (action !== 'none') {
                 newScopes.push(`${key}:${action}` as ProjectSecretAPIKeyAllowedScope)
             }
