@@ -427,6 +427,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -442,6 +443,8 @@
 >>>>>>> 560a4c0cc03 (test(backend): update query snapshots)
 =======
 >>>>>>> 1988174becb (test(backend): update query snapshots)
+=======
+>>>>>>> 2e8fa4aa5ed (test(backend): update query snapshots)
         FROM events
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
@@ -535,6 +538,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
 >>>>>>> 869d156d9a4 (feat: enforce field-level access control in hogql 'properties' column)
@@ -557,6 +561,8 @@
 =======
 >>>>>>> 980709c0e64 (test(backend): update query snapshots)
 >>>>>>> 1988174becb (test(backend): update query snapshots)
+=======
+>>>>>>> 2e8fa4aa5ed (test(backend): update query snapshots)
         FROM events
         LEFT JOIN
           (SELECT path(nullIf(nullIf(argMinMerge(raw_sessions.entry_url), 'null'), '')) AS `$entry_pathname`,
@@ -901,6 +907,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user.2
   '''
   
@@ -1060,6 +1067,8 @@
 >>>>>>> f3ab6d6b298 (test(backend): update query snapshots)
 =======
 >>>>>>> 560a4c0cc03 (test(backend): update query snapshots)
+=======
+>>>>>>> 2e8fa4aa5ed (test(backend): update query snapshots)
 # name: TestWebStatsTableQueryRunner.test_bounce_rate_one_user
   '''
   
@@ -1157,6 +1166,7 @@
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
 >>>>>>> 869d156d9a4 (feat: enforce field-level access control in hogql 'properties' column)
@@ -1179,6 +1189,8 @@
 =======
 >>>>>>> 980709c0e64 (test(backend): update query snapshots)
 >>>>>>> 1988174becb (test(backend): update query snapshots)
+=======
+>>>>>>> 2e8fa4aa5ed (test(backend): update query snapshots)
         GROUP BY session_id,
                  breakdown_value)
      GROUP BY breakdown_value) AS bounce ON equals(counts.breakdown_value, bounce.breakdown_value)
