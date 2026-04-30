@@ -2328,8 +2328,7 @@ export interface ProjectSecretAPIKeyApi {
     /** @nullable */
     readonly mask_value: string | null
     readonly created_at: string
-    /** @nullable */
-    readonly created_by: number | null
+    readonly created_by: UserBasicApi
     /** @nullable */
     readonly last_used_at: string | null
     /** @nullable */
@@ -2354,8 +2353,7 @@ export interface PatchedProjectSecretAPIKeyApi {
     /** @nullable */
     readonly mask_value?: string | null
     readonly created_at?: string
-    /** @nullable */
-    readonly created_by?: number | null
+    readonly created_by?: UserBasicApi
     /** @nullable */
     readonly last_used_at?: string | null
     /** @nullable */
