@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import Optional
 
 from django.db import models
@@ -120,3 +121,45 @@ class CohortCSVImport(RootTeamMixin, UUIDModel):
     @property
     def is_successful(self) -> bool:
         return self.is_completed and self.error is None
+
+
+@dataclass
+class CSVImportTracker:
+    """
+    Accumulates per-stage metrics across batches during async matching/insertion.
+
+    Persists to a `CohortCSVImport` record via `apply_to`.
+    """
+
+    persons_matched: int = 0
+    persons_added: int = 0
+    persons_already_in_cohort: int = 0
+    unmatched_count: int = 0
+    unmatched_sample: list[str] = field(default_factory=list)
+    _matched_person_uuids: set[str] = field(default_factory=set)
+
+    def record_matched(self, matched_person_uuids: list[str]) -> None:
+        for uuid in matched_person_uuids:
+            uuid_str = str(uuid)
+            if uuid_str not in self._matched_person_uuids:
+                self._matched_person_uuids.add(uuid_str)
+                self.persons_matched += 1
+
+    def record_unmatched(self, ids: list[str]) -> None:
+        self.unmatched_count += len(ids)
+        remaining_capacity = UNMATCHED_SAMPLE_CAP - len(self.unmatched_sample)
+        if remaining_capacity > 0 and ids:
+            self.unmatched_sample.extend(str(item) for item in ids[:remaining_capacity])
+
+    def record_added(self, count: int) -> None:
+        self.persons_added += count
+
+    def record_already_in_cohort(self, count: int) -> None:
+        self.persons_already_in_cohort += count
+
+    def apply_to(self, import_record: CohortCSVImport) -> None:
+        import_record.persons_matched = self.persons_matched
+        import_record.persons_added = self.persons_added
+        import_record.persons_already_in_cohort = self.persons_already_in_cohort
+        import_record.unmatched_count = self.unmatched_count
+        import_record.unmatched_sample = list(self.unmatched_sample)

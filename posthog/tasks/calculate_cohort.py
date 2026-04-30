@@ -21,6 +21,7 @@ from posthog.exceptions_capture import capture_exception
 from posthog.models import Cohort
 from posthog.models.cohort import CohortOrEmpty
 from posthog.models.cohort.calculation_history import CohortCalculationHistory
+from posthog.models.cohort.csv_import import CohortCSVImport, CSVImportTracker
 from posthog.models.cohort.util import (
     COHORT_STATS_COLLECTION_DELAY_SECONDS,
     get_all_cohort_dependencies,
@@ -475,29 +476,86 @@ def calculate_cohort_from_list(
     team_id: Optional[int] = None,
     id_type: str = "distinct_id",
     email_property_key: Optional[str] = None,
+    csv_import_id: Optional[str] = None,
 ) -> None:
     """
     team_id is only optional for backwards compatibility with the old celery task signature.
     All new tasks should pass team_id explicitly.
+
+    When `csv_import_id` is provided, the task records match/insert metrics on
+    that `CohortCSVImport` row so the frontend can surface an import summary.
     """
     start_time = time.time()
     cohort = Cohort.objects.get(pk=cohort_id)
     if team_id is None:
         team_id = cohort.team_id
 
-    if id_type == "distinct_id":
-        batch_count = cohort.insert_users_by_list(items, team_id=team_id)
-    elif id_type == "person_id":
-        batch_count = cohort.insert_users_list_by_uuid(items, team_id=team_id)
-    elif id_type == "email":
-        batch_count = cohort.insert_users_by_email(items, team_id=team_id, email_property_key=email_property_key)
-    else:
-        raise ValueError(f"Unsupported id_type: {id_type}")
+    import_record: Optional[CohortCSVImport] = None
+    if csv_import_id:
+        import_record = CohortCSVImport.objects.filter(pk=csv_import_id, team_id=team_id).first()
+        if import_record is None:
+            logger.warn("CohortCSVImport %s not found for cohort %s; metrics will be skipped", csv_import_id, cohort.pk)
+
+    tracker: Optional[CSVImportTracker] = CSVImportTracker() if import_record is not None else None
+
+    error: Optional[Exception] = None
+    batch_count = 0
+    try:
+        if id_type == "distinct_id":
+            batch_count = cohort.insert_users_by_list(items, team_id=team_id, tracker=tracker)
+        elif id_type == "person_id":
+            batch_count = cohort.insert_users_list_by_uuid(items, team_id=team_id, tracker=tracker)
+        elif id_type == "email":
+            batch_count = cohort.insert_users_by_email(
+                items, team_id=team_id, email_property_key=email_property_key, tracker=tracker
+            )
+        else:
+            raise ValueError(f"Unsupported id_type: {id_type}")
+    except Exception as exc:
+        error = exc
+        raise
+    finally:
+        if import_record is not None:
+            _finalize_csv_import_record(import_record, tracker, error)
+
     logger.warn(
         "Cohort {}: {:,} items in {} batches from CSV completed in {:.2f}s".format(
             cohort.pk, len(items), batch_count, (time.time() - start_time)
         )
     )
+
+
+def _finalize_csv_import_record(
+    import_record: CohortCSVImport,
+    tracker: Optional[CSVImportTracker],
+    error: Optional[Exception],
+) -> None:
+    """Persist final CSV import metrics. Best-effort: never raises."""
+    try:
+        if tracker is not None:
+            tracker.apply_to(import_record)
+        if error is not None:
+            import_record.error = str(error)[:1000]
+            import_record.error_code = "insertion_error"
+        import_record.finished_at = timezone.now()
+        import_record.save(
+            update_fields=[
+                "persons_matched",
+                "persons_added",
+                "persons_already_in_cohort",
+                "unmatched_count",
+                "unmatched_sample",
+                "error",
+                "error_code",
+                "finished_at",
+            ]
+        )
+    except Exception:
+        logger.exception(
+            "Failed to finalize CohortCSVImport record",
+            csv_import_id=str(import_record.pk),
+            cohort_id=import_record.cohort_id,
+        )
 
 
 @shared_task(

@@ -57,6 +57,7 @@ from posthog.models.async_deletion import AsyncDeletion, DeletionType
 from posthog.models.cohort import DEFAULT_COHORT_INSERT_BATCH_SIZE, CohortOrEmpty
 from posthog.models.cohort.calculation_history import CohortCalculationHistory
 from posthog.models.cohort.cohort import REALTIME_COHORT_MAX_PERSON_COUNT, CohortType
+from posthog.models.cohort.csv_import import CohortCSVImport
 from posthog.models.cohort.util import (
     cohort_filters_have_values,
     get_all_cohort_dependencies,
@@ -382,6 +383,37 @@ class RemovePersonRequestSerializer(serializers.Serializer):
     person_id = serializers.UUIDField(required=True, help_text="Person UUID to remove from the cohort")
 
 
+class CohortCSVImportSerializer(serializers.ModelSerializer):
+    duration_seconds = serializers.ReadOnlyField()
+    is_completed = serializers.ReadOnlyField()
+    is_successful = serializers.ReadOnlyField()
+
+    class Meta:
+        model = CohortCSVImport
+        fields = [
+            "id",
+            "filename",
+            "id_type",
+            "email_property_key",
+            "started_at",
+            "finished_at",
+            "rows_total",
+            "rows_skipped",
+            "ids_submitted",
+            "persons_matched",
+            "persons_added",
+            "persons_already_in_cohort",
+            "unmatched_count",
+            "unmatched_sample",
+            "error",
+            "error_code",
+            "duration_seconds",
+            "is_completed",
+            "is_successful",
+        ]
+        read_only_fields = fields
+
+
 class CohortCalculationHistorySerializer(serializers.ModelSerializer):
     duration_seconds = serializers.ReadOnlyField()
     is_completed = serializers.ReadOnlyField()
@@ -700,50 +732,122 @@ class CohortSerializer(serializers.ModelSerializer):
         first_row: list[str],
         reader: Iterator[list[str]],
         skip_header: bool = False,
-    ) -> list[str]:
-        """Process single-column CSV format"""
-        distinct_ids = []
+    ) -> tuple[list[str], int, int]:
+        """Process single-column CSV format.
+
+        Returns (ids, rows_total, rows_skipped). rows_total counts data rows
+        (excluding a recognized header). rows_skipped counts rows that
+        produced no usable ID (empty cell or empty row).
+        """
+        distinct_ids: list[str] = []
+        rows_total = 0
+        rows_skipped = 0
 
         # Include first row only if it's not a header
-        if not skip_header and first_row and first_row[0].strip() != "":
-            distinct_ids.append(first_row[0].strip())
+        if not skip_header:
+            rows_total += 1
+            if first_row and first_row[0].strip() != "":
+                distinct_ids.append(first_row[0].strip())
+            else:
+                rows_skipped += 1
 
         for row in reader:
+            rows_total += 1
             if len(row) > 0:
                 stripped_id = row[0].strip()
                 if stripped_id != "":
                     distinct_ids.append(stripped_id)
-        return distinct_ids
+                    continue
+            rows_skipped += 1
 
-    def _extract_ids_multi_column(self, reader: Iterator[list[str]], id_col: int, cohort_pk: int) -> list[str]:
-        """Process multi-column CSV format with robust error handling"""
-        ids = []
-        skipped_rows = 0
+        return distinct_ids, rows_total, rows_skipped
+
+    def _extract_ids_multi_column(
+        self, reader: Iterator[list[str]], id_col: int, cohort_pk: int
+    ) -> tuple[list[str], int, int]:
+        """Process multi-column CSV format.
+
+        Returns (ids, rows_total, rows_skipped). rows_total counts data rows
+        (excluding the header row, which the caller has already consumed).
+        rows_skipped includes rows with too few columns and rows where the
+        ID cell is empty.
+        """
+        ids: list[str] = []
+        rows_total = 0
+        rows_skipped = 0
 
         for row in reader:
-            # Skip rows with incorrect number of columns
+            rows_total += 1
             if len(row) <= id_col:
-                skipped_rows += 1
+                rows_skipped += 1
                 continue
 
-            # Extract ID if present and non-empty
             id_value = row[id_col].strip()
             if id_value != "":
                 ids.append(id_value)
+            else:
+                rows_skipped += 1
 
-        if skipped_rows > 0:
-            logger.info(f"Skipped {skipped_rows} rows with incorrect column count in CSV for cohort {cohort_pk}")
+        if rows_skipped > 0:
+            logger.info(f"Skipped {rows_skipped} rows with no usable ID in CSV for cohort {cohort_pk}")
 
-        return ids
+        return ids, rows_total, rows_skipped
+
+    def _create_csv_import_record(
+        self,
+        cohort: Cohort,
+        id_type: str,
+        rows_total: int,
+        rows_skipped: int,
+        ids_submitted: int,
+        filename: str | None,
+        email_property_key: str | None,
+    ) -> CohortCSVImport:
+        request = self.context["request"]
+        created_by = getattr(request, "user", None)
+        if created_by is not None and not getattr(created_by, "is_authenticated", False):
+            created_by = None
+        return CohortCSVImport.objects.create(
+            team_id=self.context["team_id"],
+            cohort=cohort,
+            created_by=created_by,
+            id_type=id_type,
+            email_property_key=email_property_key,
+            filename=filename,
+            rows_total=rows_total,
+            rows_skipped=rows_skipped,
+            ids_submitted=ids_submitted,
+        )
 
     def _validate_and_process_ids(
-        self, ids: list[str], id_type: str, cohort: Cohort, email_property_key: str | None = None
+        self,
+        ids: list[str],
+        id_type: str,
+        cohort: Cohort,
+        rows_total: int,
+        rows_skipped: int,
+        filename: str | None,
+        email_property_key: str | None = None,
     ) -> None:
-        """Final validation and task scheduling"""
+        """Final validation and task scheduling.
+
+        Creates the CohortCSVImport record (with parse-stage metrics) and
+        hands its id to the Celery task, which fills in match/insert metrics.
+        """
         from posthog.tasks.calculate_cohort import calculate_cohort_from_list
 
         if not ids:
             raise ValidationError({"csv": [CSVConfig.ErrorMessages.NO_VALID_IDS]})
+
+        import_record = self._create_csv_import_record(
+            cohort=cohort,
+            id_type=id_type,
+            rows_total=rows_total,
+            rows_skipped=rows_skipped,
+            ids_submitted=len(ids),
+            filename=filename,
+            email_property_key=email_property_key,
+        )
 
         logger.info(f"Processing CSV upload for cohort {cohort.pk} with {len(ids)} {id_type}s")
         calculate_cohort_from_list.delay(
@@ -752,16 +856,22 @@ class CohortSerializer(serializers.ModelSerializer):
             team_id=self.context["team_id"],
             id_type=id_type,
             email_property_key=email_property_key,
+            csv_import_id=str(import_record.pk),
         )
 
-    def _handle_csv_errors(self, e: Exception, cohort: Cohort) -> None:
-        """Centralized error handling with consistent exception capture"""
+    def _handle_csv_errors(self, e: Exception, cohort: Cohort, filename: str | None = None) -> None:
+        """Centralized error handling with consistent exception capture.
+
+        Records a failed CohortCSVImport row so the frontend can surface the
+        error in the import history dialog.
+        """
 
         # Reset calculating flag on error
         cohort.is_calculating = False
         cohort.save(update_fields=["is_calculating"])
 
         if isinstance(e, UnicodeDecodeError):
+            self._record_failed_csv_import(cohort, filename, "encoding_error", CSVConfig.ErrorMessages.ENCODING_ERROR)
             raise ValidationError({"csv": [CSVConfig.ErrorMessages.ENCODING_ERROR]})
         elif isinstance(e, csv.Error):
             capture_exception(
@@ -771,9 +881,16 @@ class CohortSerializer(serializers.ModelSerializer):
                     "team_id": self.context["team_id"],
                 },
             )
+            self._record_failed_csv_import(cohort, filename, "format_error", CSVConfig.ErrorMessages.FORMAT_ERROR)
             raise ValidationError({"csv": [CSVConfig.ErrorMessages.FORMAT_ERROR]})
         elif isinstance(e, ValidationError):
-            # If it's already a ValidationError, just re-raise it to preserve format
+            csv_errors = (
+                e.detail.get("csv") if isinstance(e.detail, dict) else None  # type: ignore[union-attr]
+            )
+            error_message = (
+                csv_errors[0] if isinstance(csv_errors, list) and csv_errors else CSVConfig.ErrorMessages.GENERIC_ERROR
+            )
+            self._record_failed_csv_import(cohort, filename, "validation_error", str(error_message))
             raise
         else:
             capture_exception(
@@ -783,10 +900,43 @@ class CohortSerializer(serializers.ModelSerializer):
                     "team_id": self.context["team_id"],
                 },
             )
+            self._record_failed_csv_import(cohort, filename, "generic_error", CSVConfig.ErrorMessages.GENERIC_ERROR)
             raise ValidationError({"csv": [CSVConfig.ErrorMessages.GENERIC_ERROR]})
+
+    def _record_failed_csv_import(
+        self, cohort: Cohort, filename: str | None, error_code: str, error_message: str
+    ) -> None:
+        """Persist a CohortCSVImport row for a parse-stage failure."""
+        from django.utils import timezone
+
+        try:
+            request = self.context["request"]
+            created_by = getattr(request, "user", None)
+            if created_by is not None and not getattr(created_by, "is_authenticated", False):
+                created_by = None
+            now = timezone.now()
+            CohortCSVImport.objects.create(
+                team_id=self.context["team_id"],
+                cohort=cohort,
+                created_by=created_by,
+                id_type=CohortCSVImport.ID_TYPE_DISTINCT_ID,
+                filename=filename,
+                started_at=now,
+                finished_at=now,
+                error=error_message,
+                error_code=error_code,
+            )
+        except Exception as record_err:
+            logger.exception(
+                "Failed to record CohortCSVImport for parse-stage error",
+                cohort_id=cohort.pk,
+                error=str(record_err),
+            )
 
     def _calculate_static_by_csv(self, file, cohort: Cohort) -> None:
         """Main orchestration method for CSV processing - clear high-level flow"""
+        filename = getattr(file, "name", None)
+
         # Set calculating flag immediately so UI shows loading state
         cohort.is_calculating = True
         cohort.save(update_fields=["is_calculating"])
@@ -797,18 +947,28 @@ class CohortSerializer(serializers.ModelSerializer):
             if self._is_single_column_format(first_row):
                 email_property_key: str | None = None
                 if first_row and self._is_person_id_header(first_row[0]):
-                    ids = self._extract_ids_single_column(first_row, reader, skip_header=True)
+                    ids, rows_total, rows_skipped = self._extract_ids_single_column(first_row, reader, skip_header=True)
                     id_type = "person_id"
                 elif first_row and self._is_email_header(first_row[0]):
-                    ids = self._extract_ids_single_column(first_row, reader, skip_header=True)
+                    ids, rows_total, rows_skipped = self._extract_ids_single_column(first_row, reader, skip_header=True)
                     id_type = "email"
                     email_property_key = first_row[0].strip()
                 else:
                     # Single column format treated as distinct_ids for backwards compatibility
-                    ids = self._extract_ids_single_column(first_row, reader, skip_header=False)
+                    ids, rows_total, rows_skipped = self._extract_ids_single_column(
+                        first_row, reader, skip_header=False
+                    )
                     id_type = "distinct_id"
 
-                self._validate_and_process_ids(ids, id_type, cohort, email_property_key)
+                self._validate_and_process_ids(
+                    ids,
+                    id_type,
+                    cohort,
+                    rows_total=rows_total,
+                    rows_skipped=rows_skipped,
+                    filename=filename,
+                    email_property_key=email_property_key,
+                )
             else:
                 result = self._find_id_column(first_row)
 
@@ -825,11 +985,19 @@ class CohortSerializer(serializers.ModelSerializer):
                     )
 
                 id_col, id_type, actual_column_name = result
-                ids = self._extract_ids_multi_column(reader, id_col, cohort.pk)
-                self._validate_and_process_ids(ids, id_type, cohort, actual_column_name if id_type == "email" else None)
+                ids, rows_total, rows_skipped = self._extract_ids_multi_column(reader, id_col, cohort.pk)
+                self._validate_and_process_ids(
+                    ids,
+                    id_type,
+                    cohort,
+                    rows_total=rows_total,
+                    rows_skipped=rows_skipped,
+                    filename=filename,
+                    email_property_key=actual_column_name if id_type == "email" else None,
+                )
 
         except Exception as e:
-            self._handle_csv_errors(e, cohort)
+            self._handle_csv_errors(e, cohort, filename=filename)
 
     def validate_query(self, query: Optional[dict]) -> Optional[dict]:
         if not query:
@@ -1475,6 +1643,29 @@ class CohortViewSet(TeamAndOrgViewSetMixin, ForbidDestroyModel, viewsets.ModelVi
         total_count = CohortCalculationHistory.objects.filter(cohort=cohort, team=self.team).count()
 
         serializer = CohortCalculationHistorySerializer(calculation_history, many=True)
+
+        return Response(
+            {
+                "results": serializer.data,
+                "count": total_count,
+                "next": None if offset + limit >= total_count else f"?limit={limit}&offset={offset + limit}",
+                "previous": None if offset == 0 else f"?limit={limit}&offset={max(0, offset - limit)}",
+            }
+        )
+
+    @action(methods=["GET"], detail=True, required_scopes=["cohort:read"], url_path="csv_imports")
+    def csv_imports(self, request: request.Request, **kwargs):
+        """List CSV import attempts for this cohort, most recent first."""
+        limit = int(request.query_params.get("limit", "20"))
+        offset = int(request.query_params.get("offset", "0"))
+
+        cohort: Cohort = self.get_object()
+
+        queryset = CohortCSVImport.objects.filter(cohort=cohort, team=self.team).order_by("-started_at")
+        total_count = queryset.count()
+        page = queryset[offset : offset + limit]
+
+        serializer = CohortCSVImportSerializer(page, many=True)
 
         return Response(
             {

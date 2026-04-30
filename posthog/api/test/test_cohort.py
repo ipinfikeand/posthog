@@ -414,6 +414,116 @@ User ID
             distinct_ids.update(person.distinct_ids)
         self.assertIn("456", distinct_ids)  # Should still contain 456
 
+    def test_static_cohort_csv_import_records_summary(self):
+        """A successful CSV upload writes a CohortCSVImport row with parse + match/insert metrics."""
+        from posthog.models.cohort.csv_import import CohortCSVImport
+
+        Person.objects.create(team=self.team, distinct_ids=["matched-1"])
+        Person.objects.create(team=self.team, distinct_ids=["matched-2"])
+
+        # Multi-column CSV so the "distinct_id" header is recognized as the ID column.
+        csv = SimpleUploadedFile(
+            "users.csv",
+            b"user_id,distinct_id\nu1,matched-1\nu2,matched-2\nu3,missing-1\nu4,missing-2\n\n",
+            content_type="application/csv",
+        )
+
+        with self.settings(CELERY_TASK_ALWAYS_EAGER=True):
+            response = self.client.post(
+                f"/api/projects/{self.team.id}/cohorts/",
+                {"name": "test-import-summary", "csv": csv, "is_static": True},
+                format="multipart",
+            )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        cohort_id = response.json()["id"]
+
+        imports = list(CohortCSVImport.objects.filter(cohort_id=cohort_id))
+        self.assertEqual(len(imports), 1)
+        record = imports[0]
+
+        self.assertEqual(record.id_type, "distinct_id")
+        self.assertEqual(record.filename, "users.csv")
+        self.assertEqual(record.created_by, self.user)
+        # rows_total counts data rows after the header. The trailing blank line is a skip.
+        self.assertEqual(record.rows_total, 5)
+        self.assertEqual(record.rows_skipped, 1)
+        self.assertEqual(record.ids_submitted, 4)
+        self.assertEqual(record.persons_matched, 2)
+        self.assertEqual(record.persons_added, 2)
+        self.assertEqual(record.persons_already_in_cohort, 0)
+        self.assertEqual(record.unmatched_count, 2)
+        self.assertEqual(set(record.unmatched_sample or []), {"missing-1", "missing-2"})
+        self.assertIsNotNone(record.finished_at)
+        self.assertIsNone(record.error)
+        self.assertTrue(record.is_successful)
+
+    def test_static_cohort_csv_import_records_failed_parse(self):
+        """An empty-file parse failure records a CohortCSVImport row with error info."""
+        from posthog.models.cohort.csv_import import CohortCSVImport
+
+        csv = SimpleUploadedFile(
+            "blank.csv",
+            b"",
+            content_type="application/csv",
+        )
+
+        response = self.client.post(
+            f"/api/projects/{self.team.id}/cohorts/",
+            {"name": "test-import-error", "csv": csv, "is_static": True},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 400, response.content)
+        # Cohort gets created before the CSV failure surfaces; the import row should still be recorded.
+        cohort_id = (
+            Cohort.objects.filter(team_id=self.team.id, name="test-import-error").values_list("id", flat=True).first()
+        )
+        self.assertIsNotNone(cohort_id)
+
+        imports = list(CohortCSVImport.objects.filter(cohort_id=cohort_id))
+        self.assertEqual(len(imports), 1)
+        record = imports[0]
+        self.assertEqual(record.error_code, "validation_error")
+        self.assertIsNotNone(record.error)
+        self.assertIsNotNone(record.finished_at)
+        self.assertFalse(record.is_successful)
+
+    def test_csv_imports_endpoint_returns_records_for_cohort(self):
+        """The csv_imports list endpoint returns records ordered by recency."""
+        from posthog.models.cohort.csv_import import CohortCSVImport
+
+        Person.objects.create(team=self.team, distinct_ids=["abc"])
+        csv = SimpleUploadedFile(
+            "users.csv",
+            b"user_id,distinct_id\nu1,abc\n",
+            content_type="application/csv",
+        )
+
+        with self.settings(CELERY_TASK_ALWAYS_EAGER=True):
+            response = self.client.post(
+                f"/api/projects/{self.team.id}/cohorts/",
+                {"name": "csv-imports-endpoint", "csv": csv, "is_static": True},
+                format="multipart",
+            )
+        self.assertEqual(response.status_code, 201, response.content)
+        cohort_id = response.json()["id"]
+
+        list_response = self.client.get(f"/api/projects/{self.team.id}/cohorts/{cohort_id}/csv_imports")
+        self.assertEqual(list_response.status_code, 200, list_response.content)
+        body = list_response.json()
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(len(body["results"]), 1)
+        result = body["results"][0]
+        self.assertEqual(result["id_type"], "distinct_id")
+        self.assertEqual(result["filename"], "users.csv")
+        self.assertEqual(result["persons_added"], 1)
+        self.assertEqual(result["ids_submitted"], 1)
+        self.assertTrue(result["is_successful"])
+        # Persisted record id should match what's in the DB
+        record_id = CohortCSVImport.objects.get(cohort_id=cohort_id).id
+        self.assertEqual(result["id"], str(record_id))
+
     def test_static_cohort_create_and_patch_with_query(self):
         _create_person(
             distinct_ids=["123"],
@@ -1030,6 +1140,7 @@ Jane Smith,{person2.uuid},ignore_this_too,jane@example.com
             team_id=self.team.id,
             id_type="person_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1063,6 +1174,7 @@ Jane Smith,   ,jane@example.com
             team_id=self.team.id,
             id_type="person_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     def test_static_cohort_csv_upload_multicolumn_without_any_id_fails(self):
@@ -1172,6 +1284,7 @@ another_user
             team_id=self.team.id,
             id_type="distinct_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1206,6 +1319,7 @@ another_user
             team_id=self.team.id,
             id_type="person_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1240,6 +1354,7 @@ Jane Smith,	user456	,jane@example.com
             team_id=self.team.id,
             id_type="distinct_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1274,6 +1389,7 @@ Jane Smith,	user456	,jane@example.com
             team_id=self.team.id,
             id_type="distinct_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1308,6 +1424,7 @@ Jane Smith,	user456	,jane@example.com
             team_id=self.team.id,
             id_type="distinct_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")
@@ -1347,6 +1464,7 @@ user789
             team_id=self.team.id,
             id_type="distinct_id",
             email_property_key=None,
+            csv_import_id=ANY,
         )
 
     @patch("posthog.tasks.calculate_cohort.calculate_cohort_from_list.delay")

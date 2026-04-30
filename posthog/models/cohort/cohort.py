@@ -34,6 +34,7 @@ from posthog.person_db_router import PERSONS_DB_FOR_WRITE
 from posthog.settings.base_variables import TEST
 
 if TYPE_CHECKING:
+    from posthog.models.cohort.csv_import import CSVImportTracker
     from posthog.models.team import Team
 
 
@@ -407,13 +408,21 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             duration=(time.monotonic() - start_time),
         )
 
-    def _get_uuids_for_distinct_ids_batch(self, distinct_ids: list[str], team_id: int) -> list[str]:
+    def _get_uuids_for_distinct_ids_batch(
+        self,
+        distinct_ids: list[str],
+        team_id: int,
+        *,
+        tracker: Optional["CSVImportTracker"] = None,
+    ) -> list[str]:
         """
         Get UUIDs for a batch of distinct IDs, excluding those already in this cohort.
 
         Args:
             distinct_ids: List of distinct IDs to convert to UUIDs
             team_id: Team ID to filter by
+            tracker: Optional CSV import tracker; when provided, records matched
+                person UUIDs and unmatched input distinct IDs.
 
         Remarks:
             This used to be a single query with a complex JOIN, but that query was timing out.
@@ -434,22 +443,45 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
 
         if use_personhog():
             persons = get_persons_by_distinct_ids(team_id, list(distinct_ids))
-            return [str(person.uuid) for person in persons]
+            uuids = [str(person.uuid) for person in persons]
+        else:
+            # ORM path: lightweight values_list queries — no full model instantiation
+            person_ids_qs = (
+                PersonDistinctId.objects.db_manager(READ_DB_FOR_PERSONS)  # nosemgrep: no-direct-persons-db-orm
+                .filter(team_id=team_id, distinct_id__in=distinct_ids)
+                .values_list("person_id", flat=True)
+                .distinct()
+            )
 
-        # ORM path: lightweight values_list queries — no full model instantiation
-        person_ids_qs = (
+            uuids = [
+                str(uuid)
+                for uuid in Person.objects.db_manager(READ_DB_FOR_PERSONS)  # nosemgrep: no-direct-persons-db-orm
+                .filter(team_id=team_id, id__in=person_ids_qs)
+                .values_list("uuid", flat=True)
+            ]
+
+        if tracker is not None:
+            self._record_distinct_id_matches(distinct_ids, team_id, uuids, tracker)
+
+        return uuids
+
+    def _record_distinct_id_matches(
+        self,
+        distinct_ids: list[str],
+        team_id: int,
+        matched_uuids: list[str],
+        tracker: "CSVImportTracker",
+    ) -> None:
+        """Record matched/unmatched distinct IDs on the tracker."""
+        matched_distinct_ids = set(
             PersonDistinctId.objects.db_manager(READ_DB_FOR_PERSONS)  # nosemgrep: no-direct-persons-db-orm
             .filter(team_id=team_id, distinct_id__in=distinct_ids)
-            .values_list("person_id", flat=True)
+            .values_list("distinct_id", flat=True)
             .distinct()
         )
-
-        return [
-            str(uuid)
-            for uuid in Person.objects.db_manager(READ_DB_FOR_PERSONS)  # nosemgrep: no-direct-persons-db-orm
-            .filter(team_id=team_id, id__in=person_ids_qs)
-            .values_list("uuid", flat=True)
-        ]
+        unmatched = [d for d in distinct_ids if d not in matched_distinct_ids]
+        tracker.record_matched(matched_uuids)
+        tracker.record_unmatched(unmatched)
 
     def insert_users_by_list(
         self,
@@ -457,6 +489,7 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
         *,
         team_id: Optional[int] = None,
         batch_size: int = DEFAULT_COHORT_INSERT_BATCH_SIZE,
+        tracker: Optional["CSVImportTracker"] = None,
     ) -> int:
         """
         Insert a list of users identified by their distinct ID into the cohort, for the given team.
@@ -465,6 +498,7 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             items: List of distinct IDs of users to be inserted into the cohort.
             team_id: ID of the team for which to insert the users. Defaults to `self.team`, because of a lot of existing usage in tests.
             batch_size: Number of records to process in each batch. Defaults to 1000.
+            tracker: Optional CSV import tracker for capturing match/insert metrics.
         """
         if team_id is None:
             team_id = self.team_id
@@ -482,13 +516,15 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             end_idx = start_idx + batch_size
             batch_distinct_ids = items[start_idx:end_idx]
 
-            return self._get_uuids_for_distinct_ids_batch(batch_distinct_ids, team_id)
+            return self._get_uuids_for_distinct_ids_batch(batch_distinct_ids, team_id, tracker=tracker)
 
         # Use FunctionBatchIterator to process distinct IDs in batches
         batch_iterator = FunctionBatchIterator(create_uuid_batch, batch_size=batch_size, max_items=len(items))
 
         # Call the batching method with ClickHouse insertion enabled
-        return self._insert_users_list_with_batching(batch_iterator, insert_in_clickhouse=True, team_id=team_id)
+        return self._insert_users_list_with_batching(
+            batch_iterator, insert_in_clickhouse=True, team_id=team_id, tracker=tracker
+        )
 
     def insert_users_list_by_uuid(
         self,
@@ -496,6 +532,7 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
         batchsize=DEFAULT_COHORT_INSERT_BATCH_SIZE,
         *,
         team_id: int,
+        tracker: Optional["CSVImportTracker"] = None,
     ) -> int:
         """
         Insert a list of users identified by their UUID into the cohort, for the given team.
@@ -504,13 +541,21 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             items: List of user UUIDs to be inserted into the cohort.
             batchsize: Number of UUIDs to process in each batch.
             team_id: The ID of the team to which the cohort belongs.
+            tracker: Optional CSV import tracker. When provided, the insertion
+                step also records matched/unmatched UUIDs against the input.
 
         Returns:
             The number of batches processed.
         """
 
         batch_iterator = ArrayBatchIterator(items, batch_size=batchsize)
-        return self._insert_users_list_with_batching(batch_iterator, insert_in_clickhouse=True, team_id=team_id)
+        return self._insert_users_list_with_batching(
+            batch_iterator,
+            insert_in_clickhouse=True,
+            team_id=team_id,
+            tracker=tracker,
+            track_input_matching=tracker is not None,
+        )
 
     def insert_users_by_email(
         self,
@@ -519,6 +564,7 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
         team_id: Optional[int] = None,
         batch_size: int = DEFAULT_COHORT_INSERT_BATCH_SIZE,
         email_property_key: str | None = None,
+        tracker: Optional["CSVImportTracker"] = None,
     ) -> int:
         """
         Insert a list of users identified by their email address into the cohort, for the given team.
@@ -528,6 +574,7 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             batch_size: Number of records to process in each batch. Defaults to 1000.
             email_property_key: Exact person property key (e.g., 'email', 'Email', 'EMAIL').
                                 Defaults to 'email' when not provided.
+            tracker: Optional CSV import tracker for capturing match/insert metrics.
         """
         if team_id is None:
             team_id = self.team_id
@@ -562,7 +609,11 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             end_idx = start_idx + batch_size
             batch_emails = items[start_idx:end_idx]
             uuids = self._get_uuids_for_emails_batch(
-                batch_emails, team_id, email_property_key=email_property_key, use_clickhouse=use_clickhouse
+                batch_emails,
+                team_id,
+                email_property_key=email_property_key,
+                use_clickhouse=use_clickhouse,
+                tracker=tracker,
             )
             return uuids
 
@@ -570,10 +621,18 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
         batch_iterator = FunctionBatchIterator(create_uuid_batch, batch_size=batch_size, max_items=len(items))
 
         # Call the batching method with ClickHouse insertion enabled
-        return self._insert_users_list_with_batching(batch_iterator, insert_in_clickhouse=True, team_id=team_id)
+        return self._insert_users_list_with_batching(
+            batch_iterator, insert_in_clickhouse=True, team_id=team_id, tracker=tracker
+        )
 
     def _get_uuids_for_emails_batch(
-        self, emails: list[str], team_id: int, email_property_key: str = "email", use_clickhouse: bool = False
+        self,
+        emails: list[str],
+        team_id: int,
+        email_property_key: str = "email",
+        use_clickhouse: bool = False,
+        *,
+        tracker: Optional["CSVImportTracker"] = None,
     ) -> list[str]:
         """
         Get UUIDs for a batch of email addresses, excluding those already in this cohort.
@@ -583,6 +642,8 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             team_id: Team ID to filter by
             email_property_key: Exact person property key to match against (e.g., 'email', 'Email', 'EMAIL').
             use_clickhouse: Whether to use ClickHouse instead of PostgreSQL
+            tracker: Optional CSV import tracker; when provided, records matched
+                person UUIDs and unmatched input emails.
 
         Returns:
             List of UUIDs for persons with the given email addresses who are not already in this cohort
@@ -591,9 +652,39 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             return []
 
         if use_clickhouse:
-            return self._get_uuids_for_emails_batch_ch(emails, team_id)
+            uuids = self._get_uuids_for_emails_batch_ch(emails, team_id)
+        else:
+            uuids = self._get_uuids_for_emails_batch_pg(emails, team_id, email_property_key)
 
-        return self._get_uuids_for_emails_batch_pg(emails, team_id, email_property_key)
+        if tracker is not None:
+            self._record_email_matches(emails, team_id, email_property_key, uuids, tracker)
+
+        return uuids
+
+    def _record_email_matches(
+        self,
+        emails: list[str],
+        team_id: int,
+        email_property_key: str,
+        matched_uuids: list[str],
+        tracker: "CSVImportTracker",
+    ) -> None:
+        """Record matched/unmatched emails on the tracker (PG-only lookup)."""
+        # Use a small PG values query to discover which emails resolved.
+        # We always use PG here for tracking even when the main lookup ran on
+        # ClickHouse — the input is bounded by batch size, and the PG path is
+        # the source of truth for property values.
+        filter_kwargs = {f"properties__{email_property_key}__in": emails}
+        matched_emails = set(
+            Person.objects.db_manager(READ_DB_FOR_PERSONS)  # nosemgrep: no-direct-persons-db-orm
+            .filter(team_id=team_id)
+            .filter(**filter_kwargs)
+            .values_list(f"properties__{email_property_key}", flat=True)
+            .distinct()
+        )
+        unmatched = [email for email in emails if email not in matched_emails]
+        tracker.record_matched(matched_uuids)
+        tracker.record_unmatched(unmatched)
 
     def _get_uuids_for_emails_batch_pg(
         self, emails: list[str], team_id: int, email_property_key: str = "email"
@@ -689,6 +780,8 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
         insert_in_clickhouse: bool = False,
         *,
         team_id: int,
+        tracker: Optional["CSVImportTracker"] = None,
+        track_input_matching: bool = False,
     ) -> int:
         """
         Insert a list of users identified by their UUID into the cohort, for the given team.
@@ -698,6 +791,12 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             insert_in_clickhouse: Whether the data should also be inserted into ClickHouse.
             batchsize: Number of UUIDs to process in each batch.
             team_id: The ID of the team to which the cohort belongs.
+            tracker: Optional CSV import tracker; when provided, records persons
+                added vs already in the cohort.
+            track_input_matching: When True, treat each batch as the original
+                input UUIDs and record matched/unmatched UUIDs against the tracker.
+                Use this for the person_id CSV import path where the input is
+                user-supplied UUIDs that may not all exist as persons.
 
         Returns:
             Number of batches processed.
@@ -723,6 +822,17 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
                     .filter(team_id=team_id)
                     .filter(uuid__in=batch)  # nosemgrep: no-direct-persons-db-orm
                 )  # nosemgrep: no-direct-persons-db-orm
+
+                if tracker is not None:
+                    self._track_batch_metrics(
+                        batch=batch,
+                        team_id=team_id,
+                        db_read=db_read,
+                        db_write=db_write,
+                        tracker=tracker,
+                        track_input_matching=track_input_matching,
+                    )
+
                 if insert_in_clickhouse:
                     # Both querysets must use db_write so Django can merge the
                     # .exclude() into a single NOT IN subquery. Using db_read
@@ -795,6 +905,53 @@ class Cohort(FileSystemSyncMixin, RootTeamMixin, models.Model):
             self._safe_save_cohort_state(team_id=team_id, processing_error=processing_error)
 
         return current_batch_index + 1
+
+    def _track_batch_metrics(
+        self,
+        *,
+        batch: list[str],
+        team_id: int,
+        db_read: str,
+        db_write: str,
+        tracker: "CSVImportTracker",
+        track_input_matching: bool,
+    ) -> None:
+        """Capture per-batch CSV import metrics: matched/unmatched and added/already-in-cohort.
+
+        Adds two bounded queries per batch (count by pk + uuid lookup); the
+        small extra cost is acceptable since a CSV import is a manual,
+        one-shot operation rather than a hot path.
+        """
+        # PKs of persons that exist in this batch (deduped at the SQL level).
+        matched_pks = list(
+            Person.objects.db_manager(db_read)  # nosemgrep: no-direct-persons-db-orm
+            .filter(team_id=team_id, uuid__in=batch)
+            .distinct()
+            .values_list("pk", flat=True)
+        )
+
+        if not matched_pks:
+            if track_input_matching:
+                tracker.record_unmatched([str(item) for item in batch])
+            return
+
+        already_in_cohort = (
+            CohortPeople.objects.using(db_write).filter(cohort_id=self.id, person_id__in=matched_pks).count()
+        )
+        added = max(len(matched_pks) - already_in_cohort, 0)
+        tracker.record_already_in_cohort(already_in_cohort)
+        tracker.record_added(added)
+
+        if track_input_matching:
+            matched_uuids = {
+                str(uuid)
+                for uuid in Person.objects.db_manager(db_read)  # nosemgrep: no-direct-persons-db-orm
+                .filter(pk__in=matched_pks)
+                .values_list("uuid", flat=True)
+            }
+            tracker.record_matched(list(matched_uuids))
+            unmatched = [str(item) for item in batch if str(item) not in matched_uuids]
+            tracker.record_unmatched(unmatched)
 
     def remove_user_by_uuid(self, user_uuid: str, *, team_id: int) -> bool:
         """
