@@ -2735,24 +2735,6 @@
 # ---
 # name: TestOrganizationFeatureFlagCopy.test_copy_feature_flag_create_new.69
   '''
-<<<<<<< HEAD
-  SELECT "posthog_filesystemshortcut"."id",
-         "posthog_filesystemshortcut"."team_id",
-         "posthog_filesystemshortcut"."user_id",
-         "posthog_filesystemshortcut"."path",
-         "posthog_filesystemshortcut"."type",
-         "posthog_filesystemshortcut"."ref",
-         "posthog_filesystemshortcut"."href",
-         "posthog_filesystemshortcut"."order",
-         "posthog_filesystemshortcut"."created_at"
-  FROM "posthog_filesystemshortcut"
-  WHERE ("posthog_filesystemshortcut"."ref" = '0001'
-         AND "posthog_filesystemshortcut"."team_id" = 99999
-         AND "posthog_filesystemshortcut"."type" = 'feature_flag'
-         AND NOT ("posthog_filesystemshortcut"."path" = 'copied-flag-key'
-                  AND "posthog_filesystemshortcut"."href" = '__skipped__'
-                  AND "posthog_filesystemshortcut"."href" IS NOT NULL))
-=======
   SELECT "posthog_team"."id",
          "posthog_team"."uuid",
          "posthog_team"."organization_id",
@@ -2853,7 +2835,6 @@
   FROM "posthog_team"
   WHERE "posthog_team"."id" = 99999
   LIMIT 21
->>>>>>> 60e78a03cf9 (test(backend): update query snapshots)
   '''
 # ---
 # name: TestOrganizationFeatureFlagCopy.test_copy_feature_flag_create_new.7
@@ -2971,6 +2952,7 @@
          "posthog_filesystemshortcut"."type",
          "posthog_filesystemshortcut"."ref",
          "posthog_filesystemshortcut"."href",
+         "posthog_filesystemshortcut"."order",
          "posthog_filesystemshortcut"."created_at"
   FROM "posthog_filesystemshortcut"
   WHERE ("posthog_filesystemshortcut"."ref" = '0001'

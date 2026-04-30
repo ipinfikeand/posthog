@@ -2501,69 +2501,22 @@
 # name: TestInsight.test_listing_insights_does_not_nplus1.39
 >>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
-<<<<<<< HEAD
-=======
-  SELECT "posthog_alertconfiguration"."created_by_id",
-         "posthog_alertconfiguration"."created_at",
-         "posthog_alertconfiguration"."id",
-         "posthog_alertconfiguration"."team_id",
-         "posthog_alertconfiguration"."insight_id",
-         "posthog_alertconfiguration"."name",
-         "posthog_alertconfiguration"."config",
-         "posthog_alertconfiguration"."calculation_interval",
-         "posthog_alertconfiguration"."threshold_id",
-         "posthog_alertconfiguration"."condition",
-         "posthog_alertconfiguration"."detector_config",
-         "posthog_alertconfiguration"."state",
-         "posthog_alertconfiguration"."enabled",
-         "posthog_alertconfiguration"."is_calculating",
-         "posthog_alertconfiguration"."last_notified_at",
-         "posthog_alertconfiguration"."last_checked_at",
-         "posthog_alertconfiguration"."next_check_at",
-         "posthog_alertconfiguration"."snoozed_until",
-         "posthog_alertconfiguration"."skip_weekend",
-         "posthog_alertconfiguration"."schedule_restriction",
-         "posthog_alertconfiguration"."investigation_agent_enabled",
-         "posthog_alertconfiguration"."investigation_gates_notifications",
-         "posthog_alertconfiguration"."investigation_inconclusive_action",
-         "posthog_user"."id",
-         "posthog_user"."password",
-         "posthog_user"."last_login",
-         "posthog_user"."first_name",
-         "posthog_user"."last_name",
-         "posthog_user"."is_staff",
-         "posthog_user"."date_joined",
-         "posthog_user"."uuid",
-         "posthog_user"."current_organization_id",
-         "posthog_user"."current_team_id",
-         "posthog_user"."email",
-         "posthog_user"."pending_email",
-         "posthog_user"."distinct_id",
-         "posthog_user"."is_email_verified",
-         "posthog_user"."requested_password_reset_at",
-         "posthog_user"."requested_2fa_reset_at",
-         "posthog_user"."has_seen_product_intro_for",
-         "posthog_user"."strapi_id",
-         "posthog_user"."is_active",
-         "posthog_user"."role_at_organization",
-         "posthog_user"."theme_mode",
-         "posthog_user"."partial_notification_settings",
-         "posthog_user"."anonymize_data",
-         "posthog_user"."allow_impersonation",
-         "posthog_user"."toolbar_mode",
-         "posthog_user"."hedgehog_config",
-         "posthog_user"."allow_sidebar_suggestions",
-         "posthog_user"."shortcut_position",
-         "posthog_user"."passkeys_enabled_for_2fa",
-         "posthog_user"."events_column_config",
-         "posthog_user"."email_opt_in"
-  FROM "posthog_alertconfiguration"
-  LEFT OUTER JOIN "posthog_user" ON ("posthog_alertconfiguration"."created_by_id" = "posthog_user"."id")
-  WHERE "posthog_alertconfiguration"."insight_id" IN (1,
-                                                      2,
-                                                      3,
-                                                      4,
-                                                      5 /* ... */)
+  SELECT "posthog_taggeditem"."id",
+         "posthog_taggeditem"."tag_id",
+         "posthog_taggeditem"."dashboard_id",
+         "posthog_taggeditem"."insight_id",
+         "posthog_taggeditem"."event_definition_id",
+         "posthog_taggeditem"."property_definition_id",
+         "posthog_taggeditem"."action_id",
+         "posthog_taggeditem"."feature_flag_id",
+         "posthog_taggeditem"."experiment_saved_metric_id",
+         "posthog_taggeditem"."ticket_id"
+  FROM "posthog_taggeditem"
+  WHERE "posthog_taggeditem"."insight_id" IN (1,
+                                              2,
+                                              3,
+                                              4,
+                                              5 /* ... */)
   '''
 # ---
 # name: TestInsight.test_listing_insights_does_not_nplus1.4
@@ -2614,6 +2567,7 @@
 # ---
 # name: TestInsight.test_listing_insights_does_not_nplus1.40
   '''
+<<<<<<< HEAD
 >>>>>>> dcd50a73047 (fix: consider property restrictions when fetching query results from cache)
   SELECT "posthog_taggeditem"."id",
          "posthog_taggeditem"."tag_id",
@@ -2656,6 +2610,8 @@
 >>>>>>> 60e78a03cf9 (test(backend): update query snapshots)
 >>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
   '''
+=======
+>>>>>>> 8d36f8f66fc (test(backend): update query snapshots)
   SELECT "posthog_taggeditem"."id",
          "posthog_taggeditem"."tag_id",
          "posthog_taggeditem"."dashboard_id",
@@ -2680,11 +2636,15 @@
 # ---
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 =======
 >>>>>>> bf8bf0f8cac (test(backend): update query snapshots)
 <<<<<<< HEAD
 # name: TestInsight.test_listing_insights_does_not_nplus1.38
+=======
+# name: TestInsight.test_listing_insights_does_not_nplus1.41
+>>>>>>> 8d36f8f66fc (test(backend): update query snapshots)
   '''
   SELECT "ee_accesscontrol"."id",
          "ee_accesscontrol"."team_id",
@@ -2750,14 +2710,16 @@
              AND "ee_accesscontrol"."team_id" = 99999))
   '''
 # ---
+<<<<<<< HEAD
 =======
 <<<<<<< HEAD
 >>>>>>> dcd50a73047 (fix: consider property restrictions when fetching query results from cache)
 >>>>>>> 0bc79d5818c (fix: consider property restrictions when fetching query results from cache)
 # name: TestInsight.test_listing_insights_does_not_nplus1.39
 =======
+=======
+>>>>>>> 8d36f8f66fc (test(backend): update query snapshots)
 # name: TestInsight.test_listing_insights_does_not_nplus1.42
->>>>>>> 60e78a03cf9 (test(backend): update query snapshots)
   '''
   SELECT "ee_accesscontrol"."id",
          "ee_accesscontrol"."team_id",
