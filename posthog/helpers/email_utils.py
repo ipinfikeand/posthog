@@ -4,6 +4,7 @@ lookup by email, and display-name / message validation.
 """
 
 import re
+import html
 import hashlib
 import unicodedata
 from dataclasses import dataclass
@@ -105,6 +106,37 @@ def validate_message_body(value: str | None) -> str | None:
         raise serializers.ValidationError(_CONTROL_ERROR, code="invalid_control_char")
     _check_shared(value, check_bare_domains=False)
     return value
+
+
+def _defang_match(match: "re.Match[str]") -> str:
+    return match.group(0).replace(".", "&#46;").replace(":", "&#58;")
+
+
+def sanitize_email_string(value: str) -> str:
+    """
+    Sanitise a string for inclusion in email content (Customer.io
+    `message_data` properties or Django email templates). Steps:
+
+    1. NFKC-normalise so fullwidth / compatibility forms can't bypass the
+       URL regexes (e.g. `ｈｔｔｐ：／／` → `http://`).
+    2. Strip zero-width / direction-override / line-separator characters that
+       could hide URL structure (`evil​.com` → `evil.com`).
+    3. HTML-escape so any embedded markup renders as text in the final email.
+    4. Defang URL-shaped substrings: replace `.` and `:` inside a URL scheme
+       (`https://`, `javascript:`, `www.`, ...) or a bare domain (`evil.com`)
+       with `&#46;` / `&#58;` so mail clients do not auto-link them.
+
+    Step 4 is the same trick phishing analysts use to share IOCs — Gmail,
+    Outlook and Apple Mail run their auto-linkers on the HTML source before
+    entity decoding, so an entity-encoded dot or colon never matches a URL
+    pattern. The final rendered text still reads as `evil.com` to the
+    recipient but is no longer clickable.
+    """
+    normalised = unicodedata.normalize("NFKC", value)
+    cleaned = _INVISIBLE_CHAR_RE.sub("", normalised)
+    escaped = html.escape(cleaned)
+    defanged = _URL_SCHEME_RE.sub(_defang_match, escaped)
+    return _BARE_DOMAIN_RE.sub(_defang_match, defanged)
 
 
 class EmailNormalizer:
