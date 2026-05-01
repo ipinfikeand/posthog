@@ -33,7 +33,6 @@ from rest_framework.utils.serializer_helpers import ReturnDict
 
 from posthog.schema import InsightVizNode
 
-from posthog.api.dashboard_metadata import build_dashboard_tiles_naming_summary, generate_dashboard_metadata
 from posthog.api.forbid_destroy_model import ForbidDestroyModel
 from posthog.api.insight import DashboardTileBasicSerializer, InsightSerializer, InsightViewSet
 from posthog.api.insight_suggestions import summarize_insight_result
@@ -58,14 +57,10 @@ from posthog.models.quick_filter import QuickFilter
 from posthog.models.signals import model_activity_signal, mutable_receiver
 from posthog.models.tagged_item import TaggedItem
 from posthog.models.user import User
-from posthog.rate_limit import (
-    LLMAnalyticsSummarizationBurstThrottle,
-    LLMAnalyticsSummarizationDailyThrottle,
-    LLMAnalyticsSummarizationSustainedThrottle,
-)
 from posthog.rbac.access_control_api_mixin import AccessControlViewSetMixin
 from posthog.rbac.user_access_control import UserAccessControl, UserAccessControlSerializerMixin
 from posthog.renderers import SafeJSONRenderer, ServerSentEventRenderer
+from posthog.resource_limits import LimitKey, check_count_limit
 from posthog.user_permissions import UserPermissionsSerializerMixin
 from posthog.utils import filters_override_requested_by_client, str_to_bool, variables_override_requested_by_client
 
@@ -109,6 +104,38 @@ DASHBOARD_SHARED_FIELDS = [
     "team_id",
     "quick_filter_ids",
 ]
+
+
+# Shared OpenAPI parameter definitions for the variables_override / filters_override
+# query params. These three semantics are easy to miss without reading
+# posthog/utils.py and posthog/api/insight_variable.py:
+#   1. Each variable entry needs `code_name` to match — `map_stale_to_latest` drops
+#      entries that lack it, so an override of `{"value": ...}` alone silently no-ops.
+#   2. Both helpers shallow-merge — top-level keys replace wholesale, nested values
+#      are not deep-merged.
+#   3. Both helpers ignore overrides when the request is authenticated via a
+#      dashboard sharing token, returning the persisted state with no error.
+VARIABLES_OVERRIDE_PARAM = OpenApiParameter(
+    "variables_override",
+    OpenApiTypes.STR,
+    description=(
+        "JSON object to override dashboard variables for this request only (not persisted). "
+        'Format: {"<variable_id>": {"code_name": "<code_name>", "variableId": "<variable_id>", "value": <new_value>}}. '
+        "Each entry must include `code_name` — partial entries are silently dropped. The simplest workflow is to call "
+        "`dashboard-get` first, copy the matching entry from the response's `variables` field, and mutate `value`. "
+        "Top-level keys replace; nested values are not deep-merged. Ignored when accessed via a dashboard sharing token."
+    ),
+)
+FILTERS_OVERRIDE_PARAM = OpenApiParameter(
+    "filters_override",
+    OpenApiTypes.STR,
+    description=(
+        "JSON object to override dashboard filters for this request only (not persisted). "
+        "Top-level keys replace; nested values are not deep-merged — pass the complete value for any key you override. "
+        "See the dashboard filters schema for available keys (e.g., `date_from`, `date_to`, `properties`). "
+        "Ignored when accessed via a dashboard sharing token."
+    ),
+)
 
 
 tracer = trace.get_tracer(__name__)
@@ -188,11 +215,6 @@ class DashboardSnapshotSerializer(serializers.Serializer):
         required=False,
         allow_null=True,
     )
-
-
-class DashboardGeneratedMetadataSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    description = serializers.CharField()
 
 
 class TextSerializer(serializers.ModelSerializer):
@@ -499,6 +521,14 @@ class DashboardSerializer(DashboardMetadataSerializer):
         request = self.context["request"]
         validated_data["created_by"] = request.user
         team_id = self.context["team_id"]
+        team = self.context["get_team"]()
+        current_count = Dashboard.objects.filter(team_id=team_id, deleted=False).count()
+        check_count_limit(
+            team=team,
+            key=LimitKey.MAX_DASHBOARDS_PER_TEAM,
+            current_count=current_count,
+            user=request.user,
+        )
         use_template: str = validated_data.pop("use_template", None)
         use_dashboard: int = validated_data.pop("use_dashboard", None)
         validated_data.pop("delete_insights", None)  # not used during creation
@@ -673,7 +703,7 @@ class DashboardSerializer(DashboardMetadataSerializer):
                 primary_dashboard=instance,
                 id=instance.team_id,
             ).update(primary_dashboard=None)
-            group_type_mapping = GroupTypeMapping.objects.filter(
+            group_type_mapping = GroupTypeMapping.objects.filter(  # nosemgrep: no-direct-persons-db-orm
                 team=instance.team, project_id=instance.team.project_id, detail_dashboard_id=instance.id
             ).first()
             if group_type_mapping:
@@ -735,7 +765,9 @@ class DashboardSerializer(DashboardMetadataSerializer):
         self.user_permissions.reset_insights_dashboard_cached_results()
         return instance
 
-    # Fields safe to pass through to DashboardTile.objects.update_or_create defaults
+    # Display-only tile fields that may appear in PATCH payloads. Safe to pass to
+    # ``update_or_create`` defaults (used by ``_upsert_tile``) and to
+    # ``save(update_fields=...)`` (used by ``_update_existing_tile_display_fields``).
     TILE_DISPLAY_FIELDS = {
         "color",
         "layouts",
@@ -746,14 +778,55 @@ class DashboardSerializer(DashboardMetadataSerializer):
     }
 
     @staticmethod
+    def _extract_display_defaults(tile_data: dict) -> dict:
+        return {k: tile_data[k] for k in DashboardSerializer.TILE_DISPLAY_FIELDS if k in tile_data}
+
+    @staticmethod
     def _upsert_tile(instance: Dashboard, tile_data: dict, **extra_defaults: Any) -> tuple[DashboardTile, bool]:
-        tile_defaults = {k: tile_data[k] for k in DashboardSerializer.TILE_DISPLAY_FIELDS if k in tile_data}
+        tile_defaults = DashboardSerializer._extract_display_defaults(tile_data)
         # nosemgrep: idor-lookup-without-team -- dashboard=instance constrains to team
-        return DashboardTile.objects.update_or_create(
+        return DashboardTile.objects_including_soft_deleted.update_or_create(
             id=tile_data.get("id", None),
             dashboard=instance,
             defaults={**tile_defaults, **extra_defaults, "dashboard": instance},
         )
+
+    @staticmethod
+    def _update_existing_tile_display_fields(instance: Dashboard, tile_data: dict) -> None:
+        """Update display fields on an existing tile, or skip silently if the id is unknown.
+
+        A display-only payload carries no insight/text/button_tile FK, so it cannot satisfy
+        the ``dash_tile_exactly_one_related_object`` CHECK constraint if it falls through to
+        an INSERT. ``update_or_create`` here used to 500 whenever the frontend posted a stale
+        tile id (cross-dashboard contamination, hard-deleted tiles, races). Never INSERT here.
+        """
+        tile_id = tile_data.get("id")
+        if tile_id is None:
+            return
+
+        tile_defaults = DashboardSerializer._extract_display_defaults(tile_data)
+        if not tile_defaults:
+            return
+
+        existing = DashboardTile.objects_including_soft_deleted.filter(
+            id=tile_id, dashboard=instance, dashboard__team_id=instance.team_id
+        ).first()
+        if existing is None:
+            logger.warning(
+                "dashboard_layout_patch_unknown_tile_skipped",
+                team_id=instance.team_id,
+                dashboard_id=instance.id,
+                tile_id=tile_id,
+                payload_fields=sorted(tile_defaults.keys()),
+            )
+            return
+
+        for attr, val in tile_defaults.items():
+            setattr(existing, attr, val)
+        # update_fields scopes the UPDATE to only the columns we changed, so concurrent writes
+        # to other columns aren't clobbered by our stale read. save() (vs queryset.update())
+        # keeps the post_save signal that sync_dashboard_tile listens to for cache invalidation.
+        existing.save(update_fields=list(tile_defaults.keys()))
 
     @staticmethod
     def _update_tiles(instance: Dashboard, tile_data: dict, user: User) -> tuple[str | None, bool]:
@@ -852,7 +925,7 @@ class DashboardSerializer(DashboardMetadataSerializer):
             or "transparent_background" in tile_data
         ):
             tile_data.pop("insight", None)  # don't ever update insight tiles here
-            DashboardSerializer._upsert_tile(instance, tile_data)
+            DashboardSerializer._update_existing_tile_display_fields(instance, tile_data)
 
         return None, False
 
@@ -900,6 +973,9 @@ class DashboardSerializer(DashboardMetadataSerializer):
         serialized_tiles: list[ReturnDict] = []
 
         tiles = DashboardTile.dashboard_queryset(dashboard.tiles.all()).prefetch_related(
+            # Used by the shared-insight force_blocking gate in `posthog/api/insight.py` to avoid an
+            # N+1 lookup of last_refresh per tile on shared dashboard renders.
+            "caching_states",
             Prefetch(
                 "insight__tagged_items",
                 queryset=TaggedItem.objects.select_related("tag"),
@@ -966,19 +1042,6 @@ class DashboardsViewSet(
     renderer_classes = [SafeJSONRenderer, ServerSentEventRenderer]
 
     TEMPLATE_MAP = {"llm-analytics": get_llm_analytics_default_template}
-
-    def get_throttles(self):
-        if self.action == "generate_metadata":
-            return [
-                LLMAnalyticsSummarizationBurstThrottle(),
-                LLMAnalyticsSummarizationSustainedThrottle(),
-                LLMAnalyticsSummarizationDailyThrottle(),
-            ]
-        return super().get_throttles()
-
-    def _validate_ai_feature_access(self) -> None:
-        if not self.organization.is_ai_data_processing_approved:
-            raise exceptions.PermissionDenied("AI data processing must be approved by your organization")
 
     @tracer.start_as_current_span("DashboardViewSet.get_serializer_context")
     def get_serializer_context(self) -> dict[str, Any]:
@@ -1126,6 +1189,7 @@ class DashboardsViewSet(
 
         return results
 
+    @extend_schema(parameters=[VARIABLES_OVERRIDE_PARAM, FILTERS_OVERRIDE_PARAM])
     @monitor(feature=Feature.DASHBOARD, endpoint="dashboard", method="GET")
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         dashboard = self.get_object()
@@ -1196,42 +1260,24 @@ class DashboardsViewSet(
 
         return Response({"result": analysis})
 
-    @extend_schema(
-        request=None,
-        responses={200: DashboardGeneratedMetadataSerializer},
-    )
-    @action(methods=["POST"], detail=True, required_scopes=["dashboard:write"])
-    def generate_metadata(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Generate an AI-suggested name and description from this dashboard's tiles."""
-        self._validate_ai_feature_access()
-        dashboard = self.get_object()
-        if not dashboard.tiles.filter(Q(insight__isnull=False) | Q(text__isnull=False)).exists():
-            return Response(
-                {
-                    "error": "Add at least one insight or text card before generating a title and description. "
-                    "Button tiles are not used for generation."
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        try:
-            summary = build_dashboard_tiles_naming_summary(dashboard)
-            metadata = generate_dashboard_metadata(
-                self.team,
-                summary,
-                current_name=(dashboard.name or "").strip() or None,
-                current_description=(dashboard.description or "").strip() or None,
-            )
-        except Exception:
-            logger.exception("dashboard_generate_metadata_failed", dashboard_id=dashboard.pk)
-            return Response(
-                {"error": "Failed to generate dashboard metadata. Please try again."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        return Response({"name": metadata.name, "description": metadata.description})
-
     # ******************************************
     # /projects/:id/dashboard/:id/stream_tiles
     # ******************************************
+    @extend_schema(
+        parameters=[
+            VARIABLES_OVERRIDE_PARAM,
+            FILTERS_OVERRIDE_PARAM,
+            OpenApiParameter(
+                "layoutSize",
+                OpenApiTypes.STR,
+                enum=["sm", "xs"],
+                description=(
+                    "Layout size for tile positioning. 'sm' (default) for standard, 'xs' for mobile. "
+                    "The snake_case alias `layout_size` is also accepted for backward compatibility."
+                ),
+            ),
+        ],
+    )
     @action(methods=["GET"], detail=True, url_path="stream_tiles")
     def stream_tiles(self, request: Request, *args: Any, **kwargs: Any) -> StreamingHttpResponse:
         """Stream dashboard metadata and tiles via Server-Sent Events. Sends metadata first, then tiles as they are rendered."""
@@ -1499,6 +1545,8 @@ class DashboardsViewSet(
                     "'json' returns the raw query result objects."
                 ),
             ),
+            VARIABLES_OVERRIDE_PARAM,
+            FILTERS_OVERRIDE_PARAM,
         ],
         responses={200: RunInsightsResponseSerializer},
     )
