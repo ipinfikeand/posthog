@@ -14,8 +14,6 @@ import { eventIngestionRestrictionLogic } from 'lib/logic/eventIngestionRestrict
 import { featureFlagLogic } from 'lib/logic/featureFlagLogic'
 import { appLogic } from 'scenes/appLogic'
 import { appScenes } from 'scenes/appScenes'
-import { PostOnboardingModal } from 'scenes/onboarding/PostOnboardingModal'
-import { postOnboardingModalLogic } from 'scenes/onboarding/postOnboardingModalLogic'
 import { sceneLogic } from 'scenes/sceneLogic'
 import { userLogic } from 'scenes/userLogic'
 
@@ -26,6 +24,9 @@ import { Navigation } from '~/layout/navigation-3000/Navigation'
 import { themeLogic } from '~/layout/navigation-3000/themeLogic'
 import { breadcrumbsLogic } from '~/layout/navigation/Breadcrumbs/breadcrumbsLogic'
 import { ImpersonationNotice } from '~/layout/navigation/ImpersonationNotice'
+
+import { PostOnboardingModal } from 'products/growth/frontend/onboarding/post-onboarding/PostOnboardingModal'
+import { postOnboardingModalLogic } from 'products/growth/frontend/onboarding/post-onboarding/postOnboardingModalLogic'
 
 import { MaxInstance } from './max/Max'
 
