@@ -1,3 +1,5 @@
+from posthog.batch_exports.models import S3_FAMILY_TYPES
+
 from products.batch_exports.backend.api.destination_tests.azure_blob import AzureBlobDestinationTest
 from products.batch_exports.backend.api.destination_tests.base import DestinationTest
 from products.batch_exports.backend.api.destination_tests.bigquery import BigQueryDestinationTest
@@ -10,7 +12,7 @@ def get_destination_test(
     destination: str,
 ) -> DestinationTest:
     """Resolve a destination to its corresponding `DestinationTest` implementation."""
-    if destination == "S3":
+    if destination in S3_FAMILY_TYPES:
         return S3DestinationTest()
     elif destination == "BigQuery":
         return BigQueryDestinationTest()
