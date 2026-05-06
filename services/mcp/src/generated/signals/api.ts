@@ -107,7 +107,7 @@ export const SignalsAgentMemoryDeleteBody = /* @__PURE__ */ zod
  * Return the team's deterministic project profile. The response always reflects either the newest non-expired cached row or a freshly-built one (lazy compute on cache miss). Read this at the start of a run to orient on the team's product mix, integrations, warehouse sources, signal coverage, and existing inbox surface.
  * @summary Get the current project profile
  */
-export const SignalsAgentHarnessProjectProfileGetParams = /* @__PURE__ */ zod.object({
+export const SignalsAgentProjectProfileGetParams = /* @__PURE__ */ zod.object({
     project_id: zod
         .string()
         .describe(

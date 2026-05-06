@@ -33178,6 +33178,16 @@ export namespace Schemas {
     }
 
     /**
+     * Mapping from event name to the team-configured primary property for that event. Names without a configured primary property are omitted; callers should fall back to the core taxonomy defaults for those.
+     */
+    export type PrimaryPropertiesResponsePrimaryProperties = {[key: string]: string};
+
+    export interface PrimaryPropertiesResponse {
+      /** Mapping from event name to the team-configured primary property for that event. Names without a configured primary property are omitted; callers should fall back to the core taxonomy defaults for those. */
+      primary_properties: PrimaryPropertiesResponsePrimaryProperties;
+    }
+
+    /**
      * One row in `inventory.product_intents`.
      */
     export interface ProductIntentEntry {
@@ -34167,16 +34177,6 @@ export namespace Schemas {
       source_version: string;
       /** Structured profile content. v1 has `inventory` only. */
       payload: ProjectProfilePayload;
-    }
-
-    /**
-     * Mapping from event name to the team-configured promoted property for that event. Names without a configured promoted property are omitted; callers should fall back to the core taxonomy defaults for those.
-     */
-    export type PromotedPropertiesResponsePromotedProperties = {[key: string]: string};
-
-    export interface PromotedPropertiesResponse {
-      /** Mapping from event name to the team-configured promoted property for that event. Names without a configured promoted property are omitted; callers should fall back to the core taxonomy defaults for those. */
-      promoted_properties: PromotedPropertiesResponsePromotedProperties;
     }
 
     /**

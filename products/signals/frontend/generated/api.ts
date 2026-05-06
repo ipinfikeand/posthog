@@ -22,6 +22,7 @@ import type {
     PatchedSignalSourceConfigApi,
     PauseResponseApi,
     PauseUntilRequestApi,
+    ProjectProfileApi,
     RememberRequestApi,
     SignalAgentRunDetailApi,
     SignalReportApi,
@@ -121,6 +122,24 @@ export const signalsAgentMemoryDelete = async (
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...options?.headers },
         body: JSON.stringify(forgetRequestApi),
+    })
+}
+
+/**
+ * Return the team's deterministic project profile. The response always reflects either the newest non-expired cached row or a freshly-built one (lazy compute on cache miss). Read this at the start of a run to orient on the team's product mix, integrations, warehouse sources, signal coverage, and existing inbox surface.
+ * @summary Get the current project profile
+ */
+export const getSignalsAgentProjectProfileGetUrl = (projectId: string) => {
+    return `/api/projects/${projectId}/signals/agent/project_profile/`
+}
+
+export const signalsAgentProjectProfileGet = async (
+    projectId: string,
+    options?: RequestInit
+): Promise<ProjectProfileApi[]> => {
+    return apiMutator<ProjectProfileApi[]>(getSignalsAgentProjectProfileGetUrl(projectId), {
+        ...options,
+        method: 'GET',
     })
 }
 
