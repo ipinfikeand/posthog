@@ -244,6 +244,11 @@ CONSTANCE_CONFIG = {
         "Whether teams are on an allow list to bypass rate limiting. Comma separated list of team-ids",
         str,
     ),
+    "FLAGS_LOG_BODIES_TEAMS": (
+        get_from_env("FLAGS_LOG_BODIES_TEAMS", "{}"),
+        'Per-team /flags request and response body logging. JSON object mapping team_id (string) to a list of flag-key wildcard patterns. Examples: "{}" disables, \'{"123": []}\' logs every flag for team 123, \'{"123": ["my-feature", "checkout-*"]}\' logs only matching flag keys. The Rust feature-flags service polls this every ~60s.',
+        str,
+    ),
     "REDIRECT_APP_TO_US": (
         get_from_env("REDIRECT_APP_TO_US", False, type_cast=str_to_bool),
         "Temporary option to redirect all app traffic from app.posthog.com to us.posthog.com.",

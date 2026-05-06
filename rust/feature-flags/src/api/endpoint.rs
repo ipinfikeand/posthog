@@ -333,6 +333,11 @@ pub async fn flags(
         .as_deref()
         .map(|v| v.parse::<i32>().unwrap_or(1));
 
+    // Hold a cheap second reference to the body when at least one team is
+    // opted into body logging. `Bytes::clone` is an O(1) refcount bump.
+    // Skipped when no team is enabled to avoid the bump on every request.
+    let raw_body_for_logging = state.body_logger.has_any_enabled().then(|| body.clone());
+
     let context = RequestContext {
         request_id,
         state: state.clone(),
@@ -432,13 +437,35 @@ pub async fn flags(
     // Must run after `process_request` returns so `log.team_id` is populated.
     log.emit_timing_metrics();
 
+    // Refresh the per-team body-logging config from Postgres if the
+    // in-memory copy is stale. Cheap atomic check inline; spawned only when
+    // due, so the DB query never adds latency to /flags responses.
+    if state.body_logger.is_stale(60) {
+        let logger = state.body_logger.clone();
+        let pool = state.database_pools.non_persons_reader.clone();
+        tokio::spawn(async move {
+            logger.refresh_if_stale(&pool, 60).await;
+        });
+    }
+
     match result {
         Ok(response) => {
+            // Emit the body-log event before `response` is consumed by the
+            // versioning step. Skipped when the team isn't opted in.
+            if let (Some(team_id), Some(raw_body)) = (log.team_id, raw_body_for_logging.as_ref()) {
+                if let Some(patterns) = state.body_logger.for_team(team_id) {
+                    state
+                        .body_logger
+                        .emit_event(request_id, team_id, raw_body, &response, &patterns);
+                }
+            }
+
             // Determine the response format based on whether request is from decide and version
             match get_versioned_response(is_from_decide, query_version, response) {
                 Ok((versioned_response, _response_format)) => {
                     log.http_status = 200;
                     log.emit();
+
                     let mut response = Json(versioned_response).into_response();
                     if log.rate_limit_warned {
                         response.headers_mut().insert(
