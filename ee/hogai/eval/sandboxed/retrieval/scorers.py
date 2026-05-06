@@ -21,7 +21,7 @@ from typing import Any
 from braintrust import Score
 from braintrust_core.score import Scorer
 
-from ee.hogai.eval.sandboxed.scorers import iter_successful_tool_calls, normalize_tool_name
+from ee.hogai.eval.sandboxed.scorers import extract_user_prompt, iter_successful_tool_calls, normalize_tool_name
 
 __all__ = ["SkillLoaded", "LookupIdInOutput"]
 
@@ -149,7 +149,7 @@ class LookupIdInOutput(Scorer):
         resolution = "expected_override" if expected_lookup is not None else None
 
         if expected_lookup is None:
-            prompt = self._extract_prompt(output)
+            prompt = extract_user_prompt(output)
             if not prompt:
                 return Score(name=self._name(), score=None, metadata={"reason": "No user prompt available"})
             prompt_norm = _normalize(prompt)
@@ -231,24 +231,3 @@ class LookupIdInOutput(Scorer):
                 return lookup
         return None
 
-    @staticmethod
-    def _extract_prompt(output: dict[str, Any]) -> str:
-        """Recover the original user prompt — same shape as the product-analytics scorers use."""
-        for key in ("prompt", "input"):
-            value = output.get(key)
-            if isinstance(value, str) and value:
-                return value
-        messages = output.get("messages") or []
-        for msg in messages:
-            if msg.get("role") != "user":
-                continue
-            content = msg.get("content")
-            if isinstance(content, str):
-                return content
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) and block.get("type") == "text":
-                        text = block.get("text", "")
-                        if isinstance(text, str) and text:
-                            return text
-        return ""
