@@ -455,6 +455,23 @@ impl ServerHandle {
     }
 
     #[allow(dead_code)]
+    pub async fn send_internal_flags_request<T: Into<reqwest::Body>>(
+        &self,
+        body: T,
+        secret: Option<&str>,
+    ) -> reqwest::Response {
+        let client = reqwest::Client::new();
+        let mut req = client
+            .post(format!("http://{}/internal/flags", self.addr))
+            .body(body)
+            .header(CONTENT_TYPE, "application/json");
+        if let Some(s) = secret {
+            req = req.header("X-PostHog-Internal-Secret", s);
+        }
+        req.send().await.expect("failed to send request")
+    }
+
+    #[allow(dead_code)]
     pub async fn send_invalid_header_for_flags_request<T: Into<reqwest::Body>>(
         &self,
         body: T,

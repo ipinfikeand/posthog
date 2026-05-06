@@ -20,6 +20,7 @@ use crate::{
     api::{errors::FlagError, types::FlagsResponse},
     flags::{flag_matching::EvaluationType, flag_service::FlagService},
     metrics::consts::{FLAG_REQUESTS_COUNTER, FLAG_REQUESTS_LATENCY, FLAG_REQUEST_FAULTS_COUNTER},
+    team::team_models::Team,
 };
 use std::collections::HashMap;
 use tracing::{instrument, warn};
@@ -103,6 +104,22 @@ fn record_metrics(
     }
 }
 
+/// Run the per-team billing limit check, unless the request came in via the
+/// internal route. Internal callers (other PostHog services) are not customer
+/// SDK traffic and shouldn't be blocked by the team's flag-evaluation quota.
+///
+/// Returns `Ok(Some(..))` when the team is over quota and the response should
+/// short-circuit; `Ok(None)` when the request should proceed.
+async fn check_billing_limits(
+    context: &RequestContext,
+    team: &Team,
+) -> Result<Option<FlagsResponse>, FlagError> {
+    if context.is_internal {
+        return Ok(None);
+    }
+    billing::check_limits(context, &team.api_token).await
+}
+
 async fn process_request_inner(
     context: RequestContext,
 ) -> (Result<FlagsResponse, FlagError>, MetricsData) {
@@ -165,13 +182,15 @@ async fn process_request_inner(
 
         tracing::debug!("Team fetched: team_id={}", team.id);
 
-        // Early exit if flags are disabled
+        // Early exit if flags are disabled. The billing limit check runs lazily
+        // inside the `else` arm — disabled-flag requests should not pay a Redis
+        // round-trip. Internal callers (other PostHog services) skip the limiter
+        // entirely: they're not customer SDK traffic and shouldn't be blocked by
+        // the team's flag-evaluation quota.
         let flags_response = if request.is_flags_disabled() {
             with_canonical_log(|log| log.flags_disabled = true);
             FlagsResponse::new(false, HashMap::new(), None, context.request_id)
-        } else if let Some(quota_limited_response) =
-            billing::check_limits(&context, &team.api_token).await?
-        {
+        } else if let Some(quota_limited_response) = check_billing_limits(&context, &team).await? {
             warn!("Request quota limited");
             with_canonical_log(|log| log.quota_limited = true);
             quota_limited_response
@@ -218,8 +237,10 @@ async fn process_request_inner(
             )
             .await?;
 
-            // Only record billing if flags are not disabled
-            if !request.is_flags_disabled() {
+            // Only record billing if flags are not disabled and the request didn't
+            // come in via the internal route (internal callers don't count against
+            // the team's billable flag-request total).
+            if !request.is_flags_disabled() && !context.is_internal {
                 billing::record_usage(&context, &filtered_flags, team.id, metrics_data.library)
                     .await;
             }

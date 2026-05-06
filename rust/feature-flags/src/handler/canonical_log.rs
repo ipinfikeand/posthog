@@ -270,6 +270,11 @@ pub struct FlagsCanonicalLogLine {
     pub http_status: u16,
     /// Error code from FlagError::error_code(). Uses &'static str to avoid allocation.
     pub error_code: Option<&'static str>,
+
+    /// Originating route. `None` for the public `/flags` and `/decide` endpoints
+    /// (which dominate traffic), `Some("internal")` for `/internal/flags`. Lets
+    /// dashboards exclude internal traffic from SDK and billing aggregates.
+    pub source: Option<&'static str>,
 }
 
 impl Default for FlagsCanonicalLogLine {
@@ -313,6 +318,7 @@ impl Default for FlagsCanonicalLogLine {
             team_cache_source: None,
             http_status: 200,
             error_code: None,
+            source: None,
         }
     }
 }
@@ -378,6 +384,7 @@ impl FlagsCanonicalLogLine {
             billing_duration_ms = self.billing_duration_ms,
             team_cache_source = self.team_cache_source,
             error_code = self.error_code,
+            source = self.source,
             "canonical_log_line"
         );
     }

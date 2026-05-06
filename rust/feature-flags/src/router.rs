@@ -263,7 +263,13 @@ pub fn router(
             .route("/flags", any(endpoint::flags))
             .route("/flags/", any(endpoint::flags))
             .route("/decide", any(endpoint::flags))
-            .route("/decide/", any(endpoint::flags));
+            .route("/decide/", any(endpoint::flags))
+            // Internal-only route for service-to-service flag evaluation. Not
+            // exposed by the public Contour ingress (path-allowlisted in
+            // PostHog/charts), so this is reachable only from inside the cluster.
+            // Bypasses billing limiter and usage counters; see `endpoint::internal_flags`.
+            .route("/internal/flags", any(endpoint::internal_flags))
+            .route("/internal/flags/", any(endpoint::internal_flags));
     }
 
     if matches!(

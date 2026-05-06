@@ -320,6 +320,7 @@ pub async fn flags(
         headers: headers.clone(),
         meta: modified_query_params,
         body,
+        is_internal: false,
     };
 
     // Create debug span for detailed tracing when debugging
@@ -413,6 +414,159 @@ pub async fn flags(
             Err(e)
         }
     }
+}
+
+/// Header used by internal PostHog services to authenticate against `/internal/flags`
+/// when [`Config::internal_flags_shared_secret`] is configured. Defense in depth —
+/// the primary boundary is that Contour does not route this path from the public
+/// ingress (see `argocd/contour-ingress/values/values.prod-*.yaml` in PostHog/charts).
+///
+/// HTTP header names are case-insensitive on the wire; this constant is the
+/// canonical wire spelling shared with [`posthog/api/services/flags_service.py`]
+/// for grep-ability.
+const INTERNAL_SECRET_HEADER: &str = "X-PostHog-Internal-Secret";
+
+/// Internal flag evaluation endpoint.
+///
+/// Mirrors [`flags`] but is intended only for other PostHog services (e.g. Django
+/// calling out from cohort code or UI handlers). Requests handled here:
+/// - bypass the per-team billing limiter (`feature_flags_billing_limiter`),
+/// - do not increment the per-team flag-request counter,
+/// - skip IP and token rate limiting (callers are trusted internal services
+///   running with bounded concurrency, not end-user devices),
+/// - validate `X-PostHog-Internal-Secret` against the configured shared secret
+///   when one is set (defense in depth on top of the network boundary).
+///
+/// The route is intentionally not exposed by the public Contour ingress, so the
+/// network boundary is the primary protection.
+#[debug_handler]
+pub async fn internal_flags(
+    state: State<router::State>,
+    InsecureClientIp(direct_ip): InsecureClientIp,
+    Query(query_params): Query<FlagsQueryParams>,
+    headers: HeaderMap,
+    method: Method,
+    path: MatchedPath,
+    body: Bytes,
+) -> Result<Response, FlagError> {
+    if method != Method::POST {
+        let response = (StatusCode::METHOD_NOT_ALLOWED, [("allow", "POST")]).into_response();
+        return Ok(response);
+    }
+
+    let request_id = extract_request_id(&headers);
+    let ip = extract_client_ip(&headers, direct_ip);
+    let ip_string = ip.to_string();
+
+    // Defense-in-depth: validate the shared secret if one is configured.
+    // When unset (default), we rely entirely on the network boundary — useful for
+    // local development without juggling secrets.
+    let configured_secret = state.config.internal_flags_shared_secret.as_str();
+    if !configured_secret.is_empty() {
+        let provided = headers
+            .get(INTERNAL_SECRET_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if !constant_time_eq(provided.as_bytes(), configured_secret.as_bytes()) {
+            return Err(FlagError::ClientFacing(ClientFacingError::Unauthorized(
+                "invalid or missing internal secret".to_string(),
+            )));
+        }
+    }
+
+    let user_agent = headers.get("user-agent").and_then(|v| v.to_str().ok());
+    let ua_info = UserAgentInfo::parse(user_agent);
+
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let queue_time_ms: Option<i64> = headers
+        .get("X-Request-Start")
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_request_start_ms)
+        .map(|start_ms| now_ms - start_ms)
+        .filter(|&delta| delta >= 0);
+
+    let canonical_log = FlagsCanonicalLogLine {
+        request_id,
+        ip: ip_string.clone(),
+        user_agent: user_agent.map(|s| s.to_string()),
+        lib: ua_info.lib_for_logging(),
+        lib_version: query_params.lib_version.clone().or(ua_info.sdk_version),
+        api_version: query_params.version.clone(),
+        queue_time_ms,
+        source: Some("internal"),
+        ..Default::default()
+    };
+
+    // Internal callers always speak FlagsV2 — they're not subject to legacy
+    // SDK compatibility, and pinning the version simplifies the response shape.
+    let mut modified_query_params = query_params.clone();
+    if modified_query_params.version.is_none() {
+        modified_query_params.version = Some("2".to_string());
+    }
+    let query_version = modified_query_params
+        .version
+        .as_deref()
+        .map(|v| v.parse::<i32>().unwrap_or(2));
+
+    let context = RequestContext {
+        request_id,
+        state: state.clone(),
+        ip,
+        headers: headers.clone(),
+        meta: modified_query_params,
+        body,
+        is_internal: true,
+    };
+
+    let _span = create_request_span(
+        &headers,
+        &query_params,
+        &method,
+        &path,
+        &ip_string,
+        request_id,
+    );
+
+    let (result, mut log) =
+        run_with_canonical_log(canonical_log, async { process_request(context).await })
+            .instrument(_span)
+            .await;
+
+    log.emit_db_operations_metrics();
+    if let Some(delta) = log.queue_time_ms {
+        common_metrics::histogram(FLAG_QUEUE_TIME_MS, &[], delta as f64);
+    }
+
+    match result {
+        Ok(response) => match get_versioned_response(false, query_version, response) {
+            Ok((versioned_response, _format)) => {
+                log.http_status = 200;
+                log.emit();
+                Ok(Json(versioned_response).into_response())
+            }
+            Err(e) => {
+                log.emit_for_error(&e);
+                Err(e)
+            }
+        },
+        Err(e) => {
+            log.emit_for_error(&e);
+            Err(e)
+        }
+    }
+}
+
+/// Constant-time byte slice comparison. Avoids leaking the configured secret
+/// length or content via timing side channels in the equality check.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff: u8 = 0;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 fn create_request_span(

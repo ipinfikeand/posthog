@@ -507,6 +507,18 @@ FLAGS_REDIS_URL = os.getenv("FLAGS_REDIS_URL", None)
 # This is used to proxy flag evaluation requests to the Rust feature flags service
 FEATURE_FLAGS_SERVICE_URL = os.getenv("FEATURE_FLAGS_SERVICE_URL", "http://localhost:3001")
 
+# Cluster-internal URL for the Rust feature flags service. Used by Django
+# server-side callers that need flag evaluation without billing the customer
+# (cohort code, internal UI handlers, etc.). Defaults to FEATURE_FLAGS_SERVICE_URL
+# so local dev "just works"; in prod this points at the ClusterIP service that is
+# not exposed by the public Contour ingress.
+INTERNAL_FLAGS_SERVICE_URL = os.getenv("INTERNAL_FLAGS_SERVICE_URL", FEATURE_FLAGS_SERVICE_URL)
+
+# Shared secret for the `/internal/flags` route. Sent in the
+# `X-PostHog-Internal-Secret` header. Defense in depth on top of the network
+# boundary; when empty (the default in dev), the route accepts any caller.
+INTERNAL_FLAGS_SHARED_SECRET = os.getenv("INTERNAL_FLAGS_SHARED_SECRET", "")
+
 FLAGS_CACHE_TTL = int(os.getenv("FLAGS_CACHE_TTL", str(60 * 60 * 24 * 7)))  # 7 days
 FLAGS_CACHE_MISS_TTL = int(os.getenv("FLAGS_CACHE_MISS_TTL", str(60 * 60 * 24)))  # 1 day
 LLM_PROMPTS_CACHE_TTL = int(os.getenv("LLM_PROMPTS_CACHE_TTL", str(60 * 60 * 24)))  # 1 day

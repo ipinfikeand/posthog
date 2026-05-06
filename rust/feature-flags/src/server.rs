@@ -122,6 +122,18 @@ pub async fn serve(
         CompressionConfig::disabled()
     };
 
+    // Surface the defense-in-depth state of `/internal/flags`. Empty is the
+    // local-dev default; we expect prod environments (charts/Helm) to set this.
+    // Network isolation is the primary control regardless — see
+    // `endpoint::internal_flags`.
+    if config.internal_flags_shared_secret.is_empty() {
+        tracing::warn!(
+            "INTERNAL_FLAGS_SHARED_SECRET is unset — /internal/flags will accept any in-cluster caller. Acceptable for local dev; set this in production for defense in depth."
+        );
+    } else {
+        tracing::info!("/internal/flags shared-secret authentication enabled");
+    }
+
     // Create ReadWriteClient for shared Redis (non-critical path: analytics, billing, cookieless)
     // "shared" means the Redis client shares the cache with the Django PostHog web app.
     // Automatically routes reads to replica and writes to primary

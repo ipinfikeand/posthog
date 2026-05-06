@@ -32,6 +32,12 @@ pub struct RequestContext {
 
     /// Request ID
     pub request_id: Uuid,
+
+    /// True when the request came in via the internal route (`/internal/flags`).
+    /// Internal callers (other PostHog services, e.g. Django) bypass the billing
+    /// limiter and don't increment the per-team flag-request counter, since
+    /// they're not customer SDK traffic.
+    pub is_internal: bool,
 }
 
 /// Represents the various property overrides that can be passed around

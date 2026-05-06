@@ -426,6 +426,14 @@ pub struct Config {
     #[envconfig(default = "5")]
     pub billing_limiter_cache_ttl_secs: u64,
 
+    // Shared secret for the `/internal/flags` route. When empty (the default),
+    // the route accepts any caller; charts/Helm sets this in prod so internal
+    // PostHog services can authenticate. The primary security boundary is that
+    // Contour does not route `/internal/flags` from the public ingress — this
+    // header is defense-in-depth.
+    #[envconfig(from = "INTERNAL_FLAGS_SHARED_SECRET", default = "")]
+    pub internal_flags_shared_secret: String,
+
     // OpenTelemetry exporter timeout (seconds)
     // - Increase if OTEL endpoint is slow or remote
     // - Decrease to fail fast and avoid blocking
@@ -841,6 +849,7 @@ impl Config {
             flag_definitions_cache_monitor_interval_secs: 30,
             db_pool_warn_utilization: 0.8,
             billing_limiter_cache_ttl_secs: 5,
+            internal_flags_shared_secret: "".to_string(),
             otel_export_timeout_secs: 3,
             maxmind_db_path: "".to_string(),
             enable_metrics: false,
