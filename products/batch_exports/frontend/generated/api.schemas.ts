@@ -32,6 +32,8 @@ export const NullEnumApi = {} as const
 
 /**
  * * `S3` - S3
+ * `AwsS3` - Aws S3
+ * `S3Compatible` - S3 Compatible
  * `Snowflake` - Snowflake
  * `Postgres` - Postgres
  * `Redshift` - Redshift
@@ -48,6 +50,8 @@ export type BatchExportDestinationTypeEnumApi =
 
 export const BatchExportDestinationTypeEnumApi = {
     S3: 'S3',
+    AwsS3: 'AwsS3',
+    S3Compatible: 'S3Compatible',
     Snowflake: 'Snowflake',
     Postgres: 'Postgres',
     Redshift: 'Redshift',
@@ -154,6 +158,8 @@ export interface BatchExportDestinationApi {
     /** A choice of supported BatchExportDestination types.
 
 * `S3` - S3
+* `AwsS3` - Aws S3
+* `S3Compatible` - S3 Compatible
 * `Snowflake` - Snowflake
 * `Postgres` - Postgres
 * `Redshift` - Redshift
