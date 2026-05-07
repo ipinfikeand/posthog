@@ -8,7 +8,7 @@ import {
 
 const projectNameForLog = (logItem: ActivityLogItem): string => {
     const context = logItem.detail?.context
-    return context?.project_name || context?.organization_name || 'this project'
+    return context?.project_name || 'this project'
 }
 
 const keyLabel = (logItem: ActivityLogItem): string => {

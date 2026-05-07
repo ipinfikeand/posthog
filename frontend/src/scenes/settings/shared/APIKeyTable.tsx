@@ -12,7 +12,7 @@ export interface APIKeyTableRow {
     created_at: string
     created_by?: {
         email: string
-        first_name: string
+        first_name?: string
     } | null
     last_used_at: string | null
     last_rolled_at: string | null

@@ -14,7 +14,8 @@ import {
 } from 'lib/scopes'
 import { teamLogic } from 'scenes/teamLogic'
 
-import { APIScopeAction, ProjectSecretAPIKeyRequest, ProjectSecretAPIKeyType } from '~/types'
+import { ProjectSecretAPIKeyApi } from '~/generated/core/api.schemas'
+import { APIScopeAction, ProjectSecretAPIKeyRequest } from '~/types'
 
 import type { projectSecretAPIKeysLogicType } from './projectSecretAPIKeysLogicType'
 
@@ -31,12 +32,12 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
     })),
 
     actions({
-        setEditingKeyId: (id: ProjectSecretAPIKeyType['id'] | null) => ({ id }),
+        setEditingKeyId: (id: ProjectSecretAPIKeyApi['id'] | null) => ({ id }),
         loadKeys: true,
-        createKeySuccess: (key: ProjectSecretAPIKeyType) => ({ key }),
-        showRollKeySuccessDialog: (key: ProjectSecretAPIKeyType) => ({ key }),
-        deleteKey: (id: ProjectSecretAPIKeyType['id']) => ({ id }),
-        rollKey: (id: ProjectSecretAPIKeyType['id']) => ({ id }),
+        createKeySuccess: (key: ProjectSecretAPIKeyApi) => ({ key }),
+        showRollKeySuccessDialog: (key: ProjectSecretAPIKeyApi) => ({ key }),
+        deleteKey: (id: ProjectSecretAPIKeyApi['id']) => ({ id }),
+        rollKey: (id: ProjectSecretAPIKeyApi['id']) => ({ id }),
         setScopeRadioValue: (key: string, action: string) => ({ key, action }),
         resetScopes: true,
         setSearchTerm: (searchTerm: string) => ({ searchTerm }),
@@ -44,7 +45,7 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
 
     reducers({
         editingKeyId: [
-            null as ProjectSecretAPIKeyType['id'] | null,
+            null as ProjectSecretAPIKeyApi['id'] | null,
             {
                 setEditingKeyId: (_, { id }) => id,
             },
@@ -60,7 +61,7 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
 
     loaders(({ values, actions }) => ({
         keys: [
-            [] as ProjectSecretAPIKeyType[],
+            [] as ProjectSecretAPIKeyApi[],
             {
                 loadKeys: async () => {
                     if (!values.currentTeamId) {
@@ -77,14 +78,14 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
                     try {
                         await api.projectSecretApiKeys.delete(id)
                         lemonToast.success('Project API key deleted')
-                        return values.keys.filter((key: ProjectSecretAPIKeyType) => key.id !== id)
+                        return values.keys.filter((key: ProjectSecretAPIKeyApi) => key.id !== id)
                     } catch (error: any) {
                         lemonToast.error('Failed to delete project API key')
                         throw error
                     }
                 },
                 rollKey: async ({ id }: { id: string }) => {
-                    const origKey = values.keys.find((key: ProjectSecretAPIKeyType) => key.id === id)
+                    const origKey = values.keys.find((key: ProjectSecretAPIKeyApi) => key.id === id)
                     if (!origKey) {
                         return values.keys
                     }
@@ -93,8 +94,8 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
                         const rolledKey = await api.projectSecretApiKeys.roll(id)
                         actions.showRollKeySuccessDialog(rolledKey)
 
-                        rolledKey.value = undefined
-                        return values.keys.map((key: ProjectSecretAPIKeyType) => (key.id === id ? rolledKey : key))
+                        const storedKey = { ...rolledKey, value: '' }
+                        return values.keys.map((key: ProjectSecretAPIKeyApi) => (key.id === id ? storedKey : key))
                     } catch (error: any) {
                         lemonToast.error('Failed to roll project API key')
                         throw error
@@ -139,7 +140,7 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
 
                     actions.loadKeysSuccess([
                         key,
-                        ...values.keys.filter((k: ProjectSecretAPIKeyType) => k.id !== values.editingKeyId),
+                        ...values.keys.filter((k: ProjectSecretAPIKeyApi) => k.id !== values.editingKeyId),
                     ])
                     actions.setEditingKeyId(null)
                 } catch (error: any) {
@@ -208,7 +209,7 @@ export const projectSecretAPIKeysLogic = kea<projectSecretAPIKeysLogicType>([
 
         setEditingKeyId: ({ id }: { id: string | null }) => {
             if (id) {
-                const key = values.keys.find((k: ProjectSecretAPIKeyType) => k.id === id)
+                const key = values.keys.find((k: ProjectSecretAPIKeyApi) => k.id === id)
                 actions.resetEditingKey({
                     label: key?.label ?? '',
                     scopes: (key?.scopes ?? []) as ProjectSecretAPIKeyAllowedScope[],

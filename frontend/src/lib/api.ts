@@ -19,7 +19,7 @@ import { SessionSummaryContent } from 'scenes/session-recordings/player/player-m
 import { LINK_PAGE_SIZE, SURVEY_PAGE_SIZE } from 'scenes/surveys/constants'
 
 import { getCurrentExporterData } from '~/exporter/exporterViewLogic'
-import { OrganizationOAuthApplicationApi } from '~/generated/core/api.schemas'
+import { OrganizationOAuthApplicationApi, ProjectSecretAPIKeyApi } from '~/generated/core/api.schemas'
 import { Variable } from '~/queries/nodes/DataVisualization/types'
 import {
     AnyResponseType,
@@ -173,7 +173,6 @@ import {
     ProductTourAIGenerationResponse,
     ProductTourStep,
     ProjectSecretAPIKeyRequest,
-    ProjectSecretAPIKeyType,
     ProjectType,
     PropertyDefinition,
     PropertyDefinitionType,
@@ -1809,8 +1808,8 @@ export class ApiRequest {
         return this.projectsDetail(projectId).addPathComponent('project_secret_api_keys')
     }
 
-    public projectSecretApiKey(id: ProjectSecretAPIKeyType['id'], teamId?: TeamType['id']): ApiRequest {
-        return this.projectSecretApiKeys(teamId).addPathComponent(id)
+    public projectSecretApiKey(id: ProjectSecretAPIKeyApi['id'], projectId?: ProjectType['id']): ApiRequest {
+        return this.projectSecretApiKeys(projectId).addPathComponent(id)
     }
 
     // Request finalization
@@ -5865,25 +5864,25 @@ const api = {
     },
 
     projectSecretApiKeys: {
-        async list(): Promise<ProjectSecretAPIKeyType[]> {
-            const response: CountedPaginatedResponse<ProjectSecretAPIKeyType> = await new ApiRequest()
+        async list(): Promise<ProjectSecretAPIKeyApi[]> {
+            const response: CountedPaginatedResponse<ProjectSecretAPIKeyApi> = await new ApiRequest()
                 .projectSecretApiKeys()
                 .get()
             return response.results
         },
-        async create(data: ProjectSecretAPIKeyRequest): Promise<ProjectSecretAPIKeyType> {
+        async create(data: ProjectSecretAPIKeyRequest): Promise<ProjectSecretAPIKeyApi> {
             return await new ApiRequest().projectSecretApiKeys().create({ data })
         },
         async update(
-            id: ProjectSecretAPIKeyType['id'],
+            id: ProjectSecretAPIKeyApi['id'],
             data: Partial<ProjectSecretAPIKeyRequest>
-        ): Promise<ProjectSecretAPIKeyType> {
+        ): Promise<ProjectSecretAPIKeyApi> {
             return await new ApiRequest().projectSecretApiKey(id).update({ data })
         },
-        async delete(id: ProjectSecretAPIKeyType['id']): Promise<void> {
+        async delete(id: ProjectSecretAPIKeyApi['id']): Promise<void> {
             return await new ApiRequest().projectSecretApiKey(id).delete()
         },
-        async roll(id: ProjectSecretAPIKeyType['id']): Promise<ProjectSecretAPIKeyType> {
+        async roll(id: ProjectSecretAPIKeyApi['id']): Promise<ProjectSecretAPIKeyApi> {
             return await new ApiRequest().projectSecretApiKey(id).withAction('roll').create()
         },
     },
