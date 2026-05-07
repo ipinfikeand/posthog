@@ -99,6 +99,10 @@ VIDEO_EXPORT_TASK_QUEUE = _set_temporal_task_queue("video-export-task-queue")
 MESSAGING_TASK_QUEUE = _set_temporal_task_queue("messaging-task-queue")
 ANALYTICS_PLATFORM_TASK_QUEUE = _set_temporal_task_queue("analytics-platform-task-queue")
 SESSION_REPLAY_TASK_QUEUE = _set_temporal_task_queue("session-replay-task-queue")
+# Dedicated queue for the XGBoost-based session interestingness scoring pipeline.
+# Workers pulling this queue need libomp + xgboost installed and a sized CPU budget
+# (see posthog/temporal/session_scoring/README.md for `OMP_NUM_THREADS` guidance).
+SESSION_SCORING_TASK_QUEUE = _set_temporal_task_queue("session-scoring-task-queue")
 WEEKLY_DIGEST_TASK_QUEUE = _set_temporal_task_queue("weekly-digest-task-queue")
 LLMA_EVALS_TASK_QUEUE = _set_temporal_task_queue("llm-analytics-evals-task-queue")
 LLMA_SENTIMENT_TASK_QUEUE = _set_temporal_task_queue("llm-analytics-sentiment-task-queue")

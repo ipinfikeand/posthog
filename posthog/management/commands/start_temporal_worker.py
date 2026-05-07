@@ -136,6 +136,7 @@ from posthog.temporal.session_replay.summarization_sweep import (
     SUMMARIZATION_SWEEP_ACTIVITIES,
     SUMMARIZATION_SWEEP_WORKFLOWS,
 )
+from posthog.temporal.session_scoring import SESSION_SCORING_ACTIVITIES, SESSION_SCORING_WORKFLOWS
 from posthog.temporal.subscriptions import (
     ACTIVITIES as SUBSCRIPTION_ACTIVITIES,
     WORKFLOWS as SUBSCRIPTION_WORKFLOWS,
@@ -335,6 +336,11 @@ _task_queue_specs = [
         settings.LOGS_ALERTING_TASK_QUEUE,
         LOGS_ALERTING_WORKFLOWS,
         LOGS_ALERTING_ACTIVITIES,
+    ),
+    (
+        settings.SESSION_SCORING_TASK_QUEUE,
+        SESSION_SCORING_WORKFLOWS,
+        SESSION_SCORING_ACTIVITIES,
     ),
 ]
 
