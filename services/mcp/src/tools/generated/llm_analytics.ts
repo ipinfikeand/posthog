@@ -1075,9 +1075,6 @@ const llmaScoreDefinitionNewVersion = (): ToolBase<
         if (params.config !== undefined) {
             body['config'] = params.config
         }
-        if (params.base_version !== undefined) {
-            body['base_version'] = params.base_version
-        }
         const result = await context.api.request<Schemas.ScoreDefinition>({
             method: 'POST',
             path: `/api/environments/${encodeURIComponent(String(projectId))}/llm_analytics/score_definitions/${encodeURIComponent(String(params.id))}/new_version/`,
