@@ -4107,6 +4107,174 @@
             "required": ["id", "tool_call_id", "content"],
             "type": "object"
         },
+        "AssistantWebAnalyticsQuery": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/AssistantWebOverviewQuery"
+                },
+                {
+                    "$ref": "#/definitions/AssistantWebStatsTableQuery"
+                }
+            ],
+            "description": "Discriminated union of the assistant-facing web-analytics query types. The `kind` literal selects which mode the agent is invoking.\n\n- `WebOverviewQuery`: KPIs (visitors, sessions, bounce rate, duration)\n- `WebStatsTableQuery`: tabular breakdowns (top pages, UTMs, devices, …)   with optional bounce rate / avg time on page\n\nTime-series of arbitrary events (including pageviews) are covered by the generic `query-trends` tool — there is no `AssistantWebTrendsQuery`."
+        },
+        "AssistantWebAnalyticsQueryBase": {
+            "additionalProperties": false,
+            "description": "Shared filter set across all web-analytics assistant queries.\n\nMirrors `WebAnalyticsQueryBase` but drops noisy fields agents shouldn't set (`samplingFactor`, `aggregation_group_type_index`, `dataColorTheme`, deprecated/legacy options).",
+            "properties": {
+                "compareFilter": {
+                    "$ref": "#/definitions/CompareFilter",
+                    "description": "Compare the current period to a prior period."
+                },
+                "conversionGoal": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/WebAnalyticsConversionGoal"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Conversion goal (action ID or custom event name) for goal-aware metrics."
+                },
+                "dateRange": {
+                    "$ref": "#/definitions/AssistantDateRangeFilter",
+                    "description": "Date range for the query. Defaults to the last 7 days when omitted."
+                },
+                "doPathCleaning": {
+                    "default": false,
+                    "description": "Apply the team's path-cleaning rules to URL-style breakdowns.",
+                    "type": "boolean"
+                },
+                "filterTestAccounts": {
+                    "default": false,
+                    "description": "Exclude internal and test users by applying the team's test-account filter.",
+                    "type": "boolean"
+                },
+                "properties": {
+                    "$ref": "#/definitions/WebAnalyticsPropertyFilters",
+                    "description": "Property filters applied to the query. Accepts event, person, session, cohort, or HogQL filters. Default: []."
+                }
+            },
+            "type": "object"
+        },
+        "AssistantWebOverviewQuery": {
+            "additionalProperties": false,
+            "description": "High-level web-analytics KPIs over a period: visitors, views, sessions, average session duration, and bounce rate. Returns one row of metrics with optional period-over-period comparison.\n\nUse this when the user asks \"how is the site doing?\", \"what are the topline web numbers?\", or wants a snapshot of overall traffic health.",
+            "properties": {
+                "compareFilter": {
+                    "$ref": "#/definitions/CompareFilter",
+                    "description": "Compare the current period to a prior period."
+                },
+                "conversionGoal": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/WebAnalyticsConversionGoal"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Conversion goal (action ID or custom event name) for goal-aware metrics."
+                },
+                "dateRange": {
+                    "$ref": "#/definitions/AssistantDateRangeFilter",
+                    "description": "Date range for the query. Defaults to the last 7 days when omitted."
+                },
+                "doPathCleaning": {
+                    "default": false,
+                    "description": "Apply the team's path-cleaning rules to URL-style breakdowns.",
+                    "type": "boolean"
+                },
+                "filterTestAccounts": {
+                    "default": false,
+                    "description": "Exclude internal and test users by applying the team's test-account filter.",
+                    "type": "boolean"
+                },
+                "kind": {
+                    "const": "WebOverviewQuery",
+                    "type": "string"
+                },
+                "properties": {
+                    "$ref": "#/definitions/WebAnalyticsPropertyFilters",
+                    "description": "Property filters applied to the query. Accepts event, person, session, cohort, or HogQL filters. Default: []."
+                }
+            },
+            "required": ["kind"],
+            "type": "object"
+        },
+        "AssistantWebStatsTableQuery": {
+            "additionalProperties": false,
+            "description": "Tabular web-analytics breakdown — top pages, UTMs, devices, browsers, countries, etc. — with visitors, views, and optional bounce rate / avg time on page columns.\n\nThis is the right query for \"top pages with bounce rate\" (set `breakdownBy=Page` and `includeBounceRate=true`) and for entry/exit-page navigation analysis (`breakdownBy=InitialPage|ExitPage|PreviousPage`).",
+            "properties": {
+                "breakdownBy": {
+                    "$ref": "#/definitions/WebStatsBreakdown",
+                    "description": "Property to break down the table by. `Page`, `InitialPage`, `ExitPage`, and `PreviousPage` are all path-style breakdowns and pair naturally with `includeBounceRate` / `includeAvgTimeOnPage`."
+                },
+                "compareFilter": {
+                    "$ref": "#/definitions/CompareFilter",
+                    "description": "Compare the current period to a prior period."
+                },
+                "conversionGoal": {
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/WebAnalyticsConversionGoal"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ],
+                    "description": "Conversion goal (action ID or custom event name) for goal-aware metrics."
+                },
+                "dateRange": {
+                    "$ref": "#/definitions/AssistantDateRangeFilter",
+                    "description": "Date range for the query. Defaults to the last 7 days when omitted."
+                },
+                "doPathCleaning": {
+                    "default": false,
+                    "description": "Apply the team's path-cleaning rules to URL-style breakdowns.",
+                    "type": "boolean"
+                },
+                "filterTestAccounts": {
+                    "default": false,
+                    "description": "Exclude internal and test users by applying the team's test-account filter.",
+                    "type": "boolean"
+                },
+                "includeAvgTimeOnPage": {
+                    "default": false,
+                    "description": "Add an average-time-on-page column. Implies a Page-style breakdown.",
+                    "type": "boolean"
+                },
+                "includeBounceRate": {
+                    "default": false,
+                    "description": "Add a bounce-rate column. Most useful with a Page-style breakdown.",
+                    "type": "boolean"
+                },
+                "includeHost": {
+                    "default": false,
+                    "description": "When breaking down by Page, concatenate host + pathname so the same path on different hosts is counted separately.",
+                    "type": "boolean"
+                },
+                "kind": {
+                    "const": "WebStatsTableQuery",
+                    "type": "string"
+                },
+                "limit": {
+                    "$ref": "#/definitions/integer",
+                    "description": "Maximum rows to return."
+                },
+                "offset": {
+                    "$ref": "#/definitions/integer",
+                    "description": "Pagination offset."
+                },
+                "properties": {
+                    "$ref": "#/definitions/WebAnalyticsPropertyFilters",
+                    "description": "Property filters applied to the query. Accepts event, person, session, cohort, or HogQL filters. Default: []."
+                }
+            },
+            "required": ["kind", "breakdownBy"],
+            "type": "object"
+        },
         "AttributionMode": {
             "enum": ["first_touch", "last_touch", "linear", "time_decay", "position_based"],
             "type": "string"

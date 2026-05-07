@@ -10438,6 +10438,135 @@ class AssistantTrendsQuery(BaseModel):
     )
 
 
+class AssistantWebAnalyticsQueryBase(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    compareFilter: CompareFilter | None = Field(
+        default=None, description="Compare the current period to a prior period."
+    )
+    conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
+        default=None,
+        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+    )
+    dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
+        default=None,
+        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+    )
+    doPathCleaning: bool | None = Field(
+        default=False,
+        description="Apply the team's path-cleaning rules to URL-style breakdowns.",
+    )
+    filterTestAccounts: bool | None = Field(
+        default=False,
+        description=("Exclude internal and test users by applying the team's test-account filter."),
+    )
+    properties: (
+        list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Property filters applied to the query. Accepts event, person, session,"
+            " cohort, or HogQL filters. Default: []."
+        ),
+    )
+
+
+class AssistantWebOverviewQuery(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    compareFilter: CompareFilter | None = Field(
+        default=None, description="Compare the current period to a prior period."
+    )
+    conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
+        default=None,
+        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+    )
+    dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
+        default=None,
+        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+    )
+    doPathCleaning: bool | None = Field(
+        default=False,
+        description="Apply the team's path-cleaning rules to URL-style breakdowns.",
+    )
+    filterTestAccounts: bool | None = Field(
+        default=False,
+        description=("Exclude internal and test users by applying the team's test-account filter."),
+    )
+    kind: Literal["WebOverviewQuery"] = "WebOverviewQuery"
+    properties: (
+        list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Property filters applied to the query. Accepts event, person, session,"
+            " cohort, or HogQL filters. Default: []."
+        ),
+    )
+
+
+class AssistantWebStatsTableQuery(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    breakdownBy: WebStatsBreakdown = Field(
+        ...,
+        description=(
+            "Property to break down the table by. `Page`, `InitialPage`, `ExitPage`,"
+            " and `PreviousPage` are all path-style breakdowns and pair naturally with"
+            " `includeBounceRate` / `includeAvgTimeOnPage`."
+        ),
+    )
+    compareFilter: CompareFilter | None = Field(
+        default=None, description="Compare the current period to a prior period."
+    )
+    conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
+        default=None,
+        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+    )
+    dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
+        default=None,
+        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+    )
+    doPathCleaning: bool | None = Field(
+        default=False,
+        description="Apply the team's path-cleaning rules to URL-style breakdowns.",
+    )
+    filterTestAccounts: bool | None = Field(
+        default=False,
+        description=("Exclude internal and test users by applying the team's test-account filter."),
+    )
+    includeAvgTimeOnPage: bool | None = Field(
+        default=False,
+        description=("Add an average-time-on-page column. Implies a Page-style breakdown."),
+    )
+    includeBounceRate: bool | None = Field(
+        default=False,
+        description=("Add a bounce-rate column. Most useful with a Page-style breakdown."),
+    )
+    includeHost: bool | None = Field(
+        default=False,
+        description=(
+            "When breaking down by Page, concatenate host + pathname so the same path"
+            " on different hosts is counted separately."
+        ),
+    )
+    kind: Literal["WebStatsTableQuery"] = "WebStatsTableQuery"
+    limit: int | None = Field(default=None, description="Maximum rows to return.")
+    offset: int | None = Field(default=None, description="Pagination offset.")
+    properties: (
+        list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
+    ) = Field(
+        default=None,
+        description=(
+            "Property filters applied to the query. Accepts event, person, session,"
+            " cohort, or HogQL filters. Default: []."
+        ),
+    )
+
+
 class BreakdownItem(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -18750,6 +18879,21 @@ class AssistantTrendsActorsQuery(BaseModel):
     source: AssistantTrendsQuery = Field(
         ...,
         description="The source insight query whose data point we are drilling into.",
+    )
+
+
+class AssistantWebAnalyticsQuery(RootModel[AssistantWebOverviewQuery | AssistantWebStatsTableQuery]):
+    root: AssistantWebOverviewQuery | AssistantWebStatsTableQuery = Field(
+        ...,
+        description=(
+            "Discriminated union of the assistant-facing web-analytics query types. The"
+            " `kind` literal selects which mode the agent is invoking.\n\n-"
+            " `WebOverviewQuery`: KPIs (visitors, sessions, bounce rate, duration)\n-"
+            " `WebStatsTableQuery`: tabular breakdowns (top pages, UTMs, devices, …)  "
+            " with optional bounce rate / avg time on page\n\nTime-series of arbitrary"
+            " events (including pageviews) are covered by the generic `query-trends`"
+            " tool — there is no `AssistantWebTrendsQuery`."
+        ),
     )
 
 
