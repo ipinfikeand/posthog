@@ -84,6 +84,9 @@ def warmup() -> None:
 class FeatureCountMismatchError(Exception):
     """Booster's expected feature count != FEATURE_NAMES."""
 
+class ScoreRangeError(Exception):
+    """Booster returned scores outside [0, 1] — model is likely misconfigured."""
+
 
 def predict(df: pd.DataFrame) -> np.ndarray:
     """Score a chunk's feature DataFrame and return a 1-D float32 array in [0, 1].
@@ -111,7 +114,7 @@ def predict(df: pd.DataFrame) -> np.ndarray:
     # regression when it should be probability) — easier to debug here than
     # downstream in CH.
     if scores.size and (scores.min() < 0.0 or scores.max() > 1.0):
-        raise FeatureCountMismatchError(
+        raise ScoreRangeError(
             f"Booster returned scores outside [0, 1]: min={scores.min()}, max={scores.max()}. "
             "Model is likely not configured for probability output (objective should be "
             "binary:logistic / reg:logistic, or the booster needs an inverse_link wrapper)."
