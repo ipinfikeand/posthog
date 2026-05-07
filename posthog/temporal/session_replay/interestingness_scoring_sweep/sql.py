@@ -1,4 +1,4 @@
-"""ClickHouse statements for the session-scoring pipeline.
+"""ClickHouse statements for the session interestingness scoring pipeline.
 
 The serving SELECT mirrors the training query:
 
@@ -20,10 +20,12 @@ The serving SELECT mirrors the training query:
        NULL in raw_sessions_v3 — they re-appear on the next tick within the
        lookback window, then naturally fall out once they age past it).
 
-`INSERT_SCORES_SQL` writes the score back to `writable_raw_sessions_v3` as
-a partial-column insert; AggregatingMergeTree merges it onto the existing
-session row without disturbing any other column (every other AggregateFunction
-column gets the engine's empty state, which is a merge no-op).
+Score writeback flows through Kafka — see
+`posthog.models.raw_sessions.sessions_v3_score_kafka` for the topic / Kafka
+engine table / MV trio. The activity emits one JSONEachRow message per scored
+session; CH consumes via the MV which performs a partial-column insert into
+`writable_raw_sessions_v3`. The AggregatingMergeTree then merges the score
+onto the existing session row without disturbing any other column.
 
 Schema note: a handful of columns referenced by the training query do not yet
 exist on `session_replay_features` (`scroll_to_top_count`, `backspace_count`,
@@ -34,7 +36,7 @@ exist on `session_replay_features` (`scroll_to_top_count`, `backspace_count`,
 before this pipeline can run end-to-end. See README.md.
 """
 
-from posthog.models.raw_sessions.sessions_v3 import DISTRIBUTED_RAW_SESSIONS_TABLE_V3, WRITABLE_RAW_SESSIONS_TABLE_V3
+from posthog.models.raw_sessions.sessions_v3 import DISTRIBUTED_RAW_SESSIONS_TABLE_V3
 
 # Distributed `session_replay_features` table name. Hardcoded because there is
 # no Python helper for it; the schema is in
@@ -319,20 +321,4 @@ FROM (
     GROUP BY team_id, session_id_v7, session_timestamp
     HAVING max(interestingness_score) IS NULL
 )
-""".strip()
-
-
-def insert_scores_sql(table: str | None = None) -> str:
-    """Return the partial-column INSERT used to write scores back to raw_sessions_v3.
-
-    Only the ORDER BY key columns + `interestingness_score` are listed; every
-    other column gets its engine default. For `AggregateFunction(...)` columns
-    the default is the empty aggregate state, which merges with the existing
-    state to leave the value untouched. Net effect: we patch the score onto
-    the row without rewriting any feature column.
-    """
-    target = table or WRITABLE_RAW_SESSIONS_TABLE_V3()
-    return f"""
-INSERT INTO {target} (team_id, session_id_v7, session_timestamp, interestingness_score)
-VALUES
 """.strip()

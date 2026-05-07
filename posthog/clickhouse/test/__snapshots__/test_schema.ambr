@@ -607,6 +607,17 @@
   
   '''
 # ---
+# name: test_create_kafka_table_with_different_kafka_host[kafka_raw_sessions_v3_interestingness_score]
+  '''
+  CREATE TABLE IF NOT EXISTS kafka_raw_sessions_v3_interestingness_score
+  (
+      team_id Int64,
+      session_id_v7 String,
+      interestingness_score Nullable(Float32)
+  )
+  ENGINE = Kafka(msk_cluster, kafka_topic_list = 'clickhouse_raw_sessions_v3_interestingness_score_test', kafka_group_name = 'group1', kafka_format = 'JSONEachRow')
+  '''
+# ---
 # name: test_create_kafka_table_with_different_kafka_host[kafka_session_replay_events]
   '''
   
@@ -2334,6 +2345,17 @@
   
   '''
 # ---
+# name: test_create_table_query[kafka_raw_sessions_v3_interestingness_score]
+  '''
+  CREATE TABLE IF NOT EXISTS kafka_raw_sessions_v3_interestingness_score
+  (
+      team_id Int64,
+      session_id_v7 String,
+      interestingness_score Nullable(Float32)
+  )
+  ENGINE = Kafka(msk_cluster, kafka_topic_list = 'clickhouse_raw_sessions_v3_interestingness_score_test', kafka_group_name = 'group1', kafka_format = 'JSONEachRow')
+  '''
+# ---
 # name: test_create_table_query[kafka_session_replay_events]
   '''
   
@@ -3990,6 +4012,17 @@
       has_replay_events SimpleAggregateFunction(max, Boolean)
   ) ENGINE = Distributed('posthog', 'posthog_test', 'sharded_raw_sessions_v3', cityHash64(session_id_v7))
   
+  '''
+# ---
+# name: test_create_table_query[raw_sessions_v3_interestingness_score_mv]
+  '''
+  CREATE MATERIALIZED VIEW IF NOT EXISTS raw_sessions_v3_interestingness_score_mv
+  TO posthog_test.writable_raw_sessions_v3 (team_id, session_id_v7, interestingness_score)
+  AS SELECT
+      team_id,
+      toUInt128(session_id_v7) AS session_id_v7,
+      interestingness_score
+  FROM posthog_test.kafka_raw_sessions_v3_interestingness_score
   '''
 # ---
 # name: test_create_table_query[raw_sessions_v3_mv]

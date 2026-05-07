@@ -119,6 +119,10 @@ from posthog.temporal.session_replay.gemini_cleanup_sweep import (
     GEMINI_CLEANUP_SWEEP_WORKFLOWS,
 )
 from posthog.temporal.session_replay.import_recording import IMPORT_RECORDING_ACTIVITIES, IMPORT_RECORDING_WORKFLOWS
+from posthog.temporal.session_replay.interestingness_scoring_sweep import (
+    INTERESTINGNESS_SCORING_SWEEP_ACTIVITIES,
+    INTERESTINGNESS_SCORING_SWEEP_WORKFLOWS,
+)
 from posthog.temporal.session_replay.rasterize_recording import (
     RASTERIZE_RECORDING_ACTIVITIES,
     RASTERIZE_RECORDING_WORKFLOWS,
@@ -136,7 +140,6 @@ from posthog.temporal.session_replay.summarization_sweep import (
     SUMMARIZATION_SWEEP_ACTIVITIES,
     SUMMARIZATION_SWEEP_WORKFLOWS,
 )
-from posthog.temporal.session_scoring import SESSION_SCORING_ACTIVITIES, SESSION_SCORING_WORKFLOWS
 from posthog.temporal.subscriptions import (
     ACTIVITIES as SUBSCRIPTION_ACTIVITIES,
     WORKFLOWS as SUBSCRIPTION_WORKFLOWS,
@@ -338,9 +341,9 @@ _task_queue_specs = [
         LOGS_ALERTING_ACTIVITIES,
     ),
     (
-        settings.SESSION_SCORING_TASK_QUEUE,
-        SESSION_SCORING_WORKFLOWS,
-        SESSION_SCORING_ACTIVITIES,
+        settings.INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE,
+        INTERESTINGNESS_SCORING_SWEEP_WORKFLOWS,
+        INTERESTINGNESS_SCORING_SWEEP_ACTIVITIES,
     ),
 ]
 

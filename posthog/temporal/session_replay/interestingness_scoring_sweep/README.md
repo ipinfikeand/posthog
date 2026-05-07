@@ -26,9 +26,38 @@ ScoreSessionsBatchWorkflow             (parent — scaffolding only)
                  training query)
               2. validate_features (hard fail on schema drift)
               3. xgboost.Booster.predict
-              4. CH INSERT (team_id, session_id_v7, session_timestamp, score)
-              5. return ChunkResult(scored=N)
+              4. ClickhouseProducer → Kafka topic
+                 (clickhouse_raw_sessions_v3_interestingness_score)
+              5. CH Kafka engine table + MV → writable_raw_sessions_v3
+              6. return ChunkResult(scored=N)
 ```
+
+### Score writeback path
+
+Producer side (`activities._publish_scores`):
+
+- One JSONEachRow message per scored session on
+  `KAFKA_CLICKHOUSE_RAW_SESSIONS_V3_INTERESTINGNESS_SCORE`.
+- `session_id_v7` is sent as a decimal string because uint128 exceeds
+  JSON-safe integer precision.
+- `session_timestamp` is **not** sent — the writable table derives it from
+  `session_id_v7` via its `DEFAULT` expression.
+- `producer.flush(timeout=30s)` runs after the loop so the activity doesn't
+  ack `scored=N` to the workflow before librdkafka has actually delivered.
+
+Consumer side (CH-managed, see
+`posthog/models/raw_sessions/sessions_v3_score_kafka.py`):
+
+- `kafka_raw_sessions_v3_interestingness_score` — Kafka engine table.
+- `raw_sessions_v3_interestingness_score_mv` — materialized view that does
+  `INSERT INTO writable_raw_sessions_v3 (team_id, session_id_v7,
+interestingness_score)` after `toUInt128(session_id_v7)`. Every other
+  column gets its empty `AggregateFunction` state, which the
+  AggregatingMergeTree merges as a no-op against the existing session row.
+
+In tests `ClickhouseProducer` short-circuits to `sync_execute(sql, data)`
+against `INSERT_RAW_SESSIONS_V3_INTERESTINGNESS_SCORE_SQL`, so unit tests
+exercise the same writable-table contract without needing a Kafka cluster.
 
 ### Two CH tables, one pipeline
 
@@ -64,10 +93,13 @@ is bounded.
 - **No Redis, no S3** — every chunk is fetch-predict-write end-to-end inside
   one activity. Add Redis only if/when fetch and predict need to live on
   different worker pools (e.g., GPU vs CPU).
-- **Partial-column INSERT** — `INSERT INTO writable_raw_sessions_v3 (team_id,
-session_id_v7, session_timestamp, interestingness_score) VALUES (…)` writes
-  only the score; every other column gets its empty aggregate state, which the
-  AggregatingMergeTree merges as a no-op against the existing row.
+- **Kafka-mediated partial-column INSERT** — score writeback flows through
+  the same Kafka → CH MV pipeline as every other CH writer in PostHog. We
+  do not produce 200k INSERT statements per tick; we produce 200k JSONEachRow
+  messages and let the CH Kafka engine table + MV do the batched insert.
+  At-least-once delivery is harmless because the score column is
+  `SimpleAggregateFunction(max, …)` and the pipeline only ever produces a
+  single score per session.
 
 ## Throughput sizing
 
@@ -103,7 +135,7 @@ Pair with **low Temporal concurrency** so each predict gets the whole CPU:
 ```python
 Worker(
     ...,
-    task_queue=settings.SESSION_SCORING_TASK_QUEUE,
+    task_queue=settings.INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE,
     max_concurrent_activities=2,        # not 32 — let libomp do the parallelism
     max_concurrent_workflow_tasks=20,
 )
@@ -128,6 +160,11 @@ Loaded once per worker process from
 mount via a sidecar. First-call latency is paid once per pod; warm with
 `scorer.warmup()` from the worker bootstrap to remove that latency from the
 first chunk's wall time.
+
+`xgboost` is in `pyproject.toml`'s top-level dependencies — every worker
+image carries it. The booster itself is still lazy-loaded inside
+`scorer._load_booster`, so workers pulling other task queues don't pay the
+libomp init cost or the model file's I/O on startup.
 
 ## Updating features
 
@@ -172,15 +209,18 @@ These are deliberately out of scope for the initial PR:
   `unique_form_field_count`. Until those land, `fetch_features_sql` will
   fail with `Unknown identifier`. The replay feature pipeline (Kafka MV +
   Node.js producer) needs to populate them in lockstep with a CH migration.
-- **Train and ship the model.** The pipeline assumes a `model.ubj` is
-  available at `SESSION_INTERESTINGNESS_MODEL_PATH`.
-- **Tests.** `score_chunk_activity` is integration-heavy (CH + xgboost);
-  start with unit coverage on `validate_features` (it's pure pandas) and a
-  smoke test that exercises `fetch_features_sql` against a fixture session.
+- **Mount the trained `model.ubj`.** Pipeline assumes a serialized booster is
+  available at `SESSION_INTERESTINGNESS_MODEL_PATH` (the runtime is in place;
+  this is purely a deployment concern — bake the file into the image or
+  mount it via a config volume / sidecar).
+- **Integration test for `score_chunk_activity`.** Unit coverage exists for
+  `validate_features` and `scorer` (load + predict + thread safety + range
+  guards). The end-to-end activity flow against real CH is still untested;
+  start with a fixture-backed smoke test of `fetch_features_sql`.
 - **Backfill.** Existing `raw_sessions_v3` rows are NULL, which is fine for
   "score going forward". If we ever want to score historical sessions, write
   a one-off Dagster job that walks `cityHash64(session_id_v7) % N` buckets
   and triggers the same `score_chunk_activity` per bucket.
 - **Metrics.** Expose `total_scored`, `chunks_failed`, and the chunk-wall-time
-  histogram to whatever observability stack the `SESSION_SCORING_TASK_QUEUE`
+  histogram to whatever observability stack the `INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE`
   worker pool uses.

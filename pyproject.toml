@@ -191,6 +191,7 @@ dependencies = [
     "google-re2>=1.1.20251105",
     "scrubadub~=2.0.1",
     "braintrust-core>=0.0.59",
+    "xgboost==3.2.0",
 ]
 
 [dependency-groups]

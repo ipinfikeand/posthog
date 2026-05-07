@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 
-from posthog.temporal.session_scoring.features import FEATURE_NAMES, feature_matrix
+from posthog.temporal.session_replay.interestingness_scoring_sweep.features import FEATURE_NAMES, feature_matrix
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -66,7 +66,7 @@ def _load_booster() -> Any:
         path = _model_path()
         booster = xgb.Booster()
         booster.load_model(path)
-        logger.info("session_scoring.model_loaded", path=path, num_features=booster.num_features())
+        logger.info("interestingness_scoring_sweep.model_loaded", path=path, num_features=booster.num_features())
         _BOOSTER = booster
         return _BOOSTER
 
@@ -105,6 +105,11 @@ def predict(df: pd.DataFrame) -> np.ndarray:
             f"{len(FEATURE_NAMES)}. Either the model was trained against a different "
             "feature set or features.py is out of sync with sql.FEATURE_SELECT_FRAGMENT."
         )
+
+    # Empty input — short-circuit before DMatrix, which doesn't accept zero-row
+    # frames whose columns have `object` dtype (the pandas default for empties).
+    if df.empty:
+        return np.empty(0, dtype=np.float32)
 
     features = feature_matrix(df)
     dmat = xgb.DMatrix(features, feature_names=list(FEATURE_NAMES))

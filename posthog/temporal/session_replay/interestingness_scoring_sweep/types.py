@@ -1,4 +1,4 @@
-"""Dataclasses for session-scoring workflow inputs and outputs.
+"""Dataclasses for the interestingness-scoring workflow inputs and outputs.
 
 All payloads are intentionally tiny so they fit comfortably under Temporal's
 ~2 MiB payload limit. Session IDs and feature vectors never flow through

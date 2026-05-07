@@ -45,6 +45,12 @@ KAFKA_SESSION_RECORDING_EVENTS = f"{KAFKA_PREFIX}session_recording_events{SUFFIX
 KAFKA_CLICKHOUSE_SESSION_REPLAY_EVENTS = f"{KAFKA_PREFIX}clickhouse_session_replay_events{SUFFIX}"
 KAFKA_CLICKHOUSE_SESSION_REPLAY_FEATURES = f"{KAFKA_PREFIX}clickhouse_session_replay_features{SUFFIX}"
 KAFKA_CLICKHOUSE_SESSION_RECORDING_EVENTS = f"{KAFKA_PREFIX}clickhouse_session_recording_events{SUFFIX}"
+# from the session interestingness scoring Temporal pipeline back into raw_sessions_v3 (interestingness_score column).
+# Producer: posthog/temporal/session_replay/interestingness_scoring_sweep/activities.py. Consumer: kafka_raw_sessions_v3_interestingness_score (CH Kafka engine table)
+# + raw_sessions_v3_interestingness_score_mv (writes partial-column rows into writable_raw_sessions_v3).
+KAFKA_CLICKHOUSE_RAW_SESSIONS_V3_INTERESTINGNESS_SCORE = (
+    f"{KAFKA_PREFIX}clickhouse_raw_sessions_v3_interestingness_score{SUFFIX}"
+)
 
 KAFKA_ERROR_TRACKING_ISSUE_FINGERPRINT = f"{KAFKA_PREFIX}clickhouse_error_tracking_issue_fingerprint{SUFFIX}"
 KAFKA_ERROR_TRACKING_FINGERPRINT_ISSUE_STATE = (

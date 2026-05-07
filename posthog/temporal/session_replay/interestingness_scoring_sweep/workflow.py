@@ -25,13 +25,13 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
 from posthog.temporal.common.base import PostHogWorkflow
-from posthog.temporal.session_scoring.constants import (
+from posthog.temporal.session_replay.interestingness_scoring_sweep.constants import (
     LIST_CHUNKS_ACTIVITY_TIMEOUT,
     SCORE_CHUNK_ACTIVITY_TIMEOUT,
     SCORE_CHUNK_HEARTBEAT_TIMEOUT,
     WORKFLOW_NAME,
 )
-from posthog.temporal.session_scoring.types import (
+from posthog.temporal.session_replay.interestingness_scoring_sweep.types import (
     ChunkResult,
     ChunkSpec,
     ScoreSessionsBatchInputs,
@@ -41,7 +41,10 @@ from posthog.temporal.session_scoring.types import (
 # Activity functions are referenced through `workflow.execute_activity`'s string
 # name so Django doesn't need to be reachable from the workflow sandbox.
 with workflow.unsafe.imports_passed_through():
-    from posthog.temporal.session_scoring.activities import list_chunks_activity, score_chunk_activity
+    from posthog.temporal.session_replay.interestingness_scoring_sweep.activities import (
+        list_chunks_activity,
+        score_chunk_activity,
+    )
 
 
 @workflow.defn(name=WORKFLOW_NAME)
@@ -62,7 +65,7 @@ class ScoreSessionsBatchWorkflow(PostHogWorkflow):
         )
 
         if not plan.chunks:
-            workflow.logger.info("session_scoring.no_work", estimated=plan.estimated_unscored_sessions)
+            workflow.logger.info("interestingness_scoring_sweep.no_work", estimated=plan.estimated_unscored_sessions)
             return ScoreSessionsBatchResult()
 
         results = await asyncio.gather(
@@ -99,7 +102,7 @@ def _summarize(chunks: list[ChunkSpec], results: list[ChunkResult | BaseExceptio
             summary.chunks_failed += 1
             if isinstance(r, ActivityError):
                 workflow.logger.warning(
-                    "session_scoring.chunk_activity_failed",
+                    "interestingness_scoring_sweep.chunk_activity_failed",
                     error=str(r),
                 )
             continue
@@ -107,7 +110,7 @@ def _summarize(chunks: list[ChunkSpec], results: list[ChunkResult | BaseExceptio
         summary.total_skipped += r.skipped_no_features
         summary.total_failed += r.failed
     workflow.logger.info(
-        "session_scoring.tick_done",
+        "interestingness_scoring_sweep.tick_done",
         chunks_dispatched=summary.chunks_dispatched,
         chunks_failed=summary.chunks_failed,
         total_scored=summary.total_scored,

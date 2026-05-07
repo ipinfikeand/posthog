@@ -8,8 +8,8 @@ DEFAULT_OF_CHUNKS deterministic hash buckets.
 from datetime import timedelta
 
 WORKFLOW_NAME = "score-sessions-batch"
-SCHEDULE_ID = "session-scoring-batch"
-SCHEDULE_TYPE = "session-scoring"
+SCHEDULE_ID = "interestingness-scoring-sweep-batch"
+SCHEDULE_TYPE = "interestingness-scoring-sweep"
 
 # Pipeline cadence. Must align with the consumer's freshness expectation —
 # 5m gives the model 5 minutes of headroom between fetch and re-tick, which
@@ -32,14 +32,20 @@ TARGET_CHUNK_SIZE = TARGET_SESSIONS_PER_TICK // DEFAULT_OF_CHUNKS
 # are no longer useful for downstream summarization.
 SCORE_LOOKBACK_DAYS = 7
 
-# ClickHouse query budgets. These are enforced server-side via `max_execution_time`
-# so a runaway scan can't eat the whole activity timeout.
+# ClickHouse query budget. Enforced server-side via `max_execution_time` so a
+# runaway scan can't eat the whole activity timeout.
 CH_FEATURE_QUERY_TIMEOUT_S = 60
-CH_INSERT_QUERY_TIMEOUT_S = 60
+
+# librdkafka flush budget after producing a chunk. Kafka writeback is async —
+# `produce()` enqueues, `flush()` blocks until every message has been ack'd by
+# the broker. 30s leaves headroom for a one-replica-down hiccup without busting
+# the activity timeout (4m).
+KAFKA_PRODUCE_FLUSH_TIMEOUT_S = 30
 
 # Activity timeouts. Sized for chunks of TARGET_CHUNK_SIZE on libomp-parallel
-# XGBoost predict (CH read ~10s + predict ~1s + CH write ~10s = ~25s typical).
-# The 4-minute ceiling absorbs CH replica failover / one slow shard.
+# XGBoost predict (CH read ~10s + predict ~1s + Kafka produce+flush ~5s = ~20s
+# typical). The 4-minute ceiling absorbs CH replica failover / one slow shard /
+# a Kafka leader election.
 SCORE_CHUNK_ACTIVITY_TIMEOUT = timedelta(minutes=4)
 SCORE_CHUNK_HEARTBEAT_TIMEOUT = timedelta(seconds=60)
 LIST_CHUNKS_ACTIVITY_TIMEOUT = timedelta(seconds=30)

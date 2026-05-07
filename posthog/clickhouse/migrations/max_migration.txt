@@ -1,1 +1,1 @@
-0251_usage_report_events_preagg
+0252_sessions_v3_interestingness_score_kafka

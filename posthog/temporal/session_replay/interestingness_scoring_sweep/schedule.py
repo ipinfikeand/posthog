@@ -32,14 +32,14 @@ from temporalio.common import SearchAttributePair, TypedSearchAttributes
 from posthog.temporal.common.client import async_connect
 from posthog.temporal.common.schedule import a_create_schedule, a_delete_schedule, a_schedule_exists, a_update_schedule
 from posthog.temporal.common.search_attributes import POSTHOG_SCHEDULE_TYPE_KEY
-from posthog.temporal.session_scoring.constants import (
+from posthog.temporal.session_replay.interestingness_scoring_sweep.constants import (
     SCHEDULE_ID,
     SCHEDULE_INTERVAL,
     SCHEDULE_TYPE,
     WORKFLOW_EXECUTION_TIMEOUT,
     WORKFLOW_NAME,
 )
-from posthog.temporal.session_scoring.types import ScoreSessionsBatchInputs
+from posthog.temporal.session_replay.interestingness_scoring_sweep.types import ScoreSessionsBatchInputs
 
 logger = structlog.get_logger(__name__)
 
@@ -50,7 +50,7 @@ def _build_schedule() -> Schedule:
             WORKFLOW_NAME,
             ScoreSessionsBatchInputs(),
             id=WORKFLOW_NAME,  # singleton workflow id; dedupes overlapping ticks
-            task_queue=settings.SESSION_SCORING_TASK_QUEUE,
+            task_queue=settings.INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE,
             execution_timeout=WORKFLOW_EXECUTION_TIMEOUT,
             retry_policy=common.RetryPolicy(maximum_attempts=1),
         ),
@@ -71,12 +71,12 @@ async def a_upsert_schedule() -> None:
     )
     if await a_schedule_exists(client, SCHEDULE_ID):
         await a_update_schedule(client, SCHEDULE_ID, schedule, search_attributes=search_attributes)
-        logger.info("session_scoring.schedule_updated", schedule_id=SCHEDULE_ID)
+        logger.info("interestingness_scoring_sweep.schedule_updated", schedule_id=SCHEDULE_ID)
     else:
         await a_create_schedule(
             client, SCHEDULE_ID, schedule, trigger_immediately=False, search_attributes=search_attributes
         )
-        logger.info("session_scoring.schedule_created", schedule_id=SCHEDULE_ID)
+        logger.info("interestingness_scoring_sweep.schedule_created", schedule_id=SCHEDULE_ID)
 
 
 async def a_delete_schedule_if_exists() -> None:
@@ -86,6 +86,6 @@ async def a_delete_schedule_if_exists() -> None:
         return
     try:
         await a_delete_schedule(client, SCHEDULE_ID)
-        logger.info("session_scoring.schedule_deleted", schedule_id=SCHEDULE_ID)
+        logger.info("interestingness_scoring_sweep.schedule_deleted", schedule_id=SCHEDULE_ID)
     except Exception as e:
-        logger.warning("session_scoring.delete_schedule_failed", error=str(e))
+        logger.warning("interestingness_scoring_sweep.delete_schedule_failed", error=str(e))
