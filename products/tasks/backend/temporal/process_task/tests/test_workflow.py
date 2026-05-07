@@ -18,6 +18,12 @@ from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from products.tasks.backend.models import SandboxSnapshot
 from products.tasks.backend.services.sandbox import Sandbox, SandboxConfig, SandboxStatus, SandboxTemplate
+from products.tasks.backend.temporal.babysit_pr import (
+    BabysitPullRequestWorkflow,
+    dispatch_ci_fix,
+    send_heartbeat_to_babysit,
+    start_babysit_for_task,
+)
 from products.tasks.backend.temporal.process_task import workflow as process_task_workflow_module
 from products.tasks.backend.temporal.process_task.activities import (
     CreateSandboxForRepositoryOutput,
@@ -38,6 +44,7 @@ from products.tasks.backend.temporal.process_task.activities import (
     track_workflow_event,
     update_task_run_status,
 )
+from products.tasks.backend.temporal.process_task.activities.get_pr_context import get_pr_context
 from products.tasks.backend.temporal.process_task.workflow import (
     PendingFollowup,
     ProcessTaskInput,
@@ -123,7 +130,7 @@ class TestProcessTaskWorkflow:
             Worker(
                 env.client,
                 task_queue=settings.TASKS_TASK_QUEUE,
-                workflows=[ProcessTaskWorkflow],
+                workflows=[ProcessTaskWorkflow, BabysitPullRequestWorkflow],
                 activities=[
                     forward_pending_user_message,
                     get_task_processing_context,
@@ -137,6 +144,10 @@ class TestProcessTaskWorkflow:
                     cleanup_sandbox,
                     track_workflow_event,
                     update_task_run_status,
+                    start_babysit_for_task,
+                    send_heartbeat_to_babysit,
+                    dispatch_ci_fix,
+                    get_pr_context,
                 ],
                 workflow_runner=UnsandboxedWorkflowRunner(),
                 activity_executor=ThreadPoolExecutor(max_workers=10),
@@ -241,7 +252,7 @@ class TestProcessTaskWorkflow:
             Worker(
                 env.client,
                 task_queue=settings.TASKS_TASK_QUEUE,
-                workflows=[ProcessTaskWorkflow],
+                workflows=[ProcessTaskWorkflow, BabysitPullRequestWorkflow],
                 activities=[
                     forward_pending_user_message,
                     get_task_processing_context,
@@ -255,6 +266,10 @@ class TestProcessTaskWorkflow:
                     cleanup_sandbox,
                     track_workflow_event,
                     update_task_run_status,
+                    start_babysit_for_task,
+                    send_heartbeat_to_babysit,
+                    dispatch_ci_fix,
+                    get_pr_context,
                 ],
                 workflow_runner=UnsandboxedWorkflowRunner(),
                 activity_executor=ThreadPoolExecutor(max_workers=10),
@@ -348,6 +363,7 @@ class TestProcessTaskWorkflowUnit:
         read_sandbox_logs_mock = AsyncMock()
         cleanup_sandbox_mock = AsyncMock()
         create_resume_snapshot_mock = AsyncMock()
+        start_babysit_mock = AsyncMock()
 
         monkeypatch.setattr(workflow, "_get_task_processing_context", get_task_processing_context_mock)
         monkeypatch.setattr(workflow, "_update_task_run_status", update_task_run_status_mock)
@@ -357,6 +373,7 @@ class TestProcessTaskWorkflowUnit:
         monkeypatch.setattr(workflow, "_cleanup_sandbox", cleanup_sandbox_mock)
         monkeypatch.setattr(workflow, "_create_resume_snapshot", create_resume_snapshot_mock)
         monkeypatch.setattr(workflow, "_emit_progress", AsyncMock())
+        monkeypatch.setattr(workflow, "_start_babysit_for_task", start_babysit_mock)
 
         async def fail_after_sandbox_creation() -> GetSandboxForRepositoryOutput:
             workflow._sandbox_id_for_cleanup = "sandbox-123"
@@ -581,6 +598,7 @@ class TestProcessTaskWorkflowUnit:
         monkeypatch.setattr(workflow, "_cleanup_sandbox", cleanup_sandbox_mock)
         monkeypatch.setattr(workflow, "_create_resume_snapshot", create_resume_snapshot_mock)
         monkeypatch.setattr(workflow, "_emit_progress", AsyncMock())
+        monkeypatch.setattr(workflow, "_start_babysit_for_task", AsyncMock())
 
         # Force the workflow into the finally block with a sandbox to clean up.
         async def fail_after_sandbox_creation() -> GetSandboxForRepositoryOutput:

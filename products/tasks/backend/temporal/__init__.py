@@ -1,4 +1,5 @@
 from .automation import RunTaskAutomationWorkflow, run_task_automation_activity
+from .babysit_pr import BabysitPullRequestWorkflow, dispatch_ci_fix, send_heartbeat_to_babysit, start_babysit_for_task
 from .create_snapshot.activities import (
     cleanup_sandbox as snapshot_cleanup_sandbox,
     clone_repository as snapshot_clone_repository,
@@ -35,6 +36,7 @@ from .slack_relay import PostHogCodeAgentRelayWorkflow, relay_slack_message
 
 WORKFLOWS = [
     ProcessTaskWorkflow,
+    BabysitPullRequestWorkflow,
     CreateSnapshotForRepositoryWorkflow,
     PostHogCodeAgentRelayWorkflow,
     RunTaskAutomationWorkflow,
@@ -64,6 +66,10 @@ ACTIVITIES = [
     get_pr_context,
     relay_slack_message,
     run_task_automation_activity,
+    # babysit_pr activities
+    start_babysit_for_task,
+    send_heartbeat_to_babysit,
+    dispatch_ci_fix,
     # create_snapshot activities
     get_snapshot_context,
     snapshot_create_sandbox,

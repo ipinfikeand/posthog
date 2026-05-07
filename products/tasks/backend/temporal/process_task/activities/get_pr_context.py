@@ -26,6 +26,7 @@ class GetPrContextOutput:
     pr_url: str
     pr_state: str
     fingerprint: str
+    is_merged: bool = False
 
 
 def compute_pr_fingerprint(pr: dict[str, Any]) -> str:
@@ -108,4 +109,5 @@ def get_pr_context(input: GetPrContextInput) -> GetPrContextOutput | None:
             pr_url=pr_url,
             pr_state=pull_request.get("state", "unknown"),
             fingerprint=fingerprint,
+            is_merged=bool(pull_request.get("merged", False)),
         )
