@@ -20,12 +20,37 @@ ScoreSessionsBatchWorkflow             (parent — scaffolding only)
    └── asyncio.gather over chunks
          score_chunk_activity(spec)    (× N, runs in parallel)
             internally:
-              1. CH SELECT features for this hash bucket
+              1. CH SELECT eligible (hash-partitioned, IS NULL) sessions
+                 from raw_sessions_v3, INNER JOIN feature CTEs over
+                 session_replay_features (same expressions as the
+                 training query)
               2. validate_features (hard fail on schema drift)
               3. xgboost.Booster.predict
               4. CH INSERT (team_id, session_id_v7, session_timestamp, score)
               5. return ChunkResult(scored=N)
 ```
+
+### Two CH tables, one pipeline
+
+- **`raw_sessions_v3`** is where the score lives (`interestingness_score`,
+  `Nullable(Float32)`, write-once via the `IS NULL` filter on the read side
+  and `max` on merge so a real score never gets clobbered by NULL).
+- **`session_replay_features`** is where the model's input features live
+  (the table populated by the replay feature pipeline). The pipeline keys
+  on `(team_id, session_id)` with string `session_id`; the JOIN back to
+  `raw_sessions_v3` is via `toString(session_id_v7)`.
+
+The serving SELECT mirrors the training query verbatim: same
+`aggregated_sufficient_statistics` and `replay_features` CTE shape, same
+column names, same arithmetic — so any drift between training and serving
+shows up as a `validate_features` failure rather than silent score skew.
+
+Sessions without replay features are dropped by the inner join and stay
+NULL in `raw_sessions_v3`. They re-appear on subsequent ticks until they
+age out of the lookback window. That's deliberate — the model can't score
+them, and writing a sentinel would either need a separate column or break
+the write-once semantics. Keep the lookback tight so the wasted scan cost
+is bounded.
 
 ### Why this shape
 
@@ -108,9 +133,12 @@ first chunk's wall time.
 
 The schema lives in two places that must move together:
 
-1. `sql.FEATURE_SELECT_FRAGMENT` — what CH projects.
+1. `sql.fetch_features_sql` — the SELECT column list, plus the
+   `_AGGREGATED_STATS_FRAGMENT` and `_REPLAY_FEATURES_FRAGMENT` CTEs that
+   produce them.
 2. `features.FEATURE_NAMES` + `features.FEATURE_RANGES` — what the model
-   expects, plus runtime range checks.
+   expects, plus runtime range checks. There's an import-time `assert` that
+   keeps the two `features.py` tables in sync.
 
 Bump `features.MODEL_FEATURE_SCHEMA_VERSION` whenever the set changes; it
 gets logged on every chunk so distribution shifts can be traced to a deploy.
@@ -132,17 +160,27 @@ tick's CH `IS NULL` filter naturally picks up whatever the slow tick missed).
 
 These are deliberately out of scope for the initial PR:
 
-- Train the actual XGBoost model. The pipeline assumes a `model.ubj` is
-  available at the configured path.
-- Pick the final feature set. The defaults in `sql.FEATURE_SELECT_FRAGMENT`
-  and `features.FEATURE_NAMES` are placeholders pending the trained model.
-- Tests. `score_chunk_activity` is integration-heavy (CH + xgboost); start
-  with unit coverage on `validate_features` and a smoke test that exercises
-  `fetch_features_sql` against a fixture session.
-- Backfill. Existing rows are NULL, which is fine for "score going forward".
-  If we ever want to score historical sessions, write a one-off Dagster job
-  that walks `cityHash64(session_id_v7) % N` buckets and triggers the same
-  `score_chunk_activity` per bucket.
-- Metrics. Expose `total_scored`, `chunks_failed`, and the chunk-wall-time
-  histogram to whatever observability stack the SESSION_SCORING_TASK_QUEUE
+- **Add the missing `session_replay_features` columns.** The training query
+  references columns that are not currently in
+  `posthog/session_recordings/sql/session_replay_feature_sql.py`:
+  `scroll_to_top_count`, `backspace_count`, `long_idle_gap_count`,
+  `console_warn_count`, `network_4xx_count`, `network_5xx_count`,
+  `mutation_count`, `viewport_resize_count`, `touch_event_count`,
+  `selection_copy_count`, all `*_path_visit_count` columns
+  (login/signup/checkout/cart/billing/settings/account/error/not_found/
+  admin/dashboard/onboarding/cancel/refund), and
+  `unique_form_field_count`. Until those land, `fetch_features_sql` will
+  fail with `Unknown identifier`. The replay feature pipeline (Kafka MV +
+  Node.js producer) needs to populate them in lockstep with a CH migration.
+- **Train and ship the model.** The pipeline assumes a `model.ubj` is
+  available at `SESSION_INTERESTINGNESS_MODEL_PATH`.
+- **Tests.** `score_chunk_activity` is integration-heavy (CH + xgboost);
+  start with unit coverage on `validate_features` (it's pure pandas) and a
+  smoke test that exercises `fetch_features_sql` against a fixture session.
+- **Backfill.** Existing `raw_sessions_v3` rows are NULL, which is fine for
+  "score going forward". If we ever want to score historical sessions, write
+  a one-off Dagster job that walks `cityHash64(session_id_v7) % N` buckets
+  and triggers the same `score_chunk_activity` per bucket.
+- **Metrics.** Expose `total_scored`, `chunks_failed`, and the chunk-wall-time
+  histogram to whatever observability stack the `SESSION_SCORING_TASK_QUEUE`
   worker pool uses.

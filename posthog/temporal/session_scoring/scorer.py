@@ -84,6 +84,7 @@ def warmup() -> None:
 class FeatureCountMismatchError(Exception):
     """Booster's expected feature count != FEATURE_NAMES."""
 
+
 class ScoreRangeError(Exception):
     """Booster returned scores outside [0, 1] — model is likely misconfigured."""
 
