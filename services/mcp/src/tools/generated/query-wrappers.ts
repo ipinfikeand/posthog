@@ -913,7 +913,7 @@ const AssistantStickinessDisplayType = z.enum(['ActionsLineGraph', 'ActionsBar',
 
 const StickinessOperator = z.enum(['gte', 'lte', 'exact'])
 
-const positive_integer = z.coerce.number().int()
+const positive_integer = z.coerce.number().int().min(1)
 
 const StickinessCriteria = z.object({
     operator: StickinessOperator,
@@ -1287,7 +1287,7 @@ const WebStatsBreakdown = z.enum([
     'FrustrationMetrics',
 ])
 
-const non_negative_integer = z.coerce.number().int()
+const non_negative_integer = z.coerce.number().int().min(0)
 
 const AssistantWebStatsTableQuery = z.object({
     breakdownBy: WebStatsBreakdown.describe(
@@ -1336,6 +1336,7 @@ const AssistantWebStatsTableQuery = z.object({
         .optional(),
     kind: z.literal('WebStatsTableQuery').default('WebStatsTableQuery'),
     limit: positive_integer
+        .max(200)
         .describe(
             'Maximum rows to return. Prefer 10–25 unless the user explicitly asks for more. Hard ceiling enforced at the wrapper.'
         )
