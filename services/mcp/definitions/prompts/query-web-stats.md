@@ -1,4 +1,4 @@
-Run a web analytics breakdown table query — top pages, UTMs, devices, browsers, countries, etc. — with visitors and views per row, plus optional bounce rate / average time on page. Mirrors the in-product **Web analytics** scene's table tiles.
+Run a web analytics breakdown table query — top pages, UTMs, devices, browsers, countries, etc. — with visitors and pageviews per row, plus optional bounce rate / average time on page. Mirrors the in-product **Web analytics** scene's table tiles.
 
 # When to use this vs `query-trends` / `query-paths`
 
@@ -12,18 +12,26 @@ Use `query-web-stats` when the breakdown or metric is session-derived:
 
 Use `query-trends` (with a breakdown) for per-event counts by an event property — no session boundaries needed. Faster.
 
-Use `query-paths` for navigation between arbitrary events (no bounce rate).
+Use `query-paths` for navigation between arbitrary events when you don't need bounce rate or session-level metrics.
 
 # `breakdownBy` cheat-sheet
 
 - **Path-style** (pair with `includeBounceRate`/`includeAvgTimeOnPage`): `Page`, `InitialPage`, `ExitPage`, `PreviousPage`
 - **Marketing**: `InitialChannelType`, `InitialReferringDomain`, `InitialReferringURL`, `InitialUTMSource`, `InitialUTMMedium`, `InitialUTMCampaign`, `InitialUTMTerm`, `InitialUTMContent`, `InitialUTMSourceMediumCampaign`
 - **Audience / device**: `Browser`, `OS`, `Viewport`, `DeviceType`, `Country`, `Region`, `City`, `Timezone`, `Language`
-- **Other**: `ScreenName`, `ExitClick`, `FrustrationMetrics`
+- **Other**: `ScreenName`, `ExitClick`, `FrustrationMetrics` (these don't combine with `includeBounceRate` / `includeAvgTimeOnPage`)
 
 # Inputs
 
-Same filter set as `query-web-overview` (`dateRange`, `compareFilter`, `properties`, `filterTestAccounts`, `doPathCleaning`, `conversionGoal`). Plus `breakdownBy` (required), `includeBounceRate`, `includeAvgTimeOnPage`, `includeHost`, `limit`, `offset`. Default `dateRange` is last 7 days. Keep `limit` small (10–25) unless the user asks for more.
+Same filter set as `query-web-overview` (`dateRange`, `compareFilter`, `properties`, `filterTestAccounts`, `doPathCleaning`, `conversionGoal`). Plus `breakdownBy` (required), `includeBounceRate`, `includeAvgTimeOnPage`, `includeHost`, `limit`, `offset`. Default `dateRange` is last 7 days.
+
+Performance hints:
+
+- Leave `compareFilter` off unless the user asks for period-over-period — enabling it roughly doubles query cost.
+- `includeAvgTimeOnPage=true` and `conversionGoal` both disable the pre-aggregated fast path. Avoid combining them with long date ranges.
+- `limit` is capped at 200 by the wrapper. Prefer 10–25 unless the user explicitly asks for more.
+
+Use `read-data-schema` to validate property names/values when needed.
 
 # Example
 
@@ -41,4 +49,4 @@ Top 20 pages by bounce rate, last 7 days:
 
 # Out of scope
 
-Goals, web vitals, and external clicks are not exposed via MCP. Fall back to `execute-sql`.
+`conversionGoal` is supported as an input on this tool. Goal-funnel breakdowns (`WebGoalsQuery`), web vitals, and external clicks aren't exposed as separate query modes — fall back to `execute-sql` for those.

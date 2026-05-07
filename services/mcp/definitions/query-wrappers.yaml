@@ -142,11 +142,13 @@ wrappers:
         description_file: ./prompts/query-web-overview.md
         system_prompt_hint: Web analytics KPIs — visitors, sessions, bounce rate, session duration
         ui_resource_uri: ui://posthog/query-results.html
-        use_optimized_output: true
         exclude_properties:
             - response
             - modifiers
             - samplingFactor
+        default_query_fields:
+            modifiers:
+                useWebAnalyticsPreAggregatedTables: true
 
     query-web-stats:
         schema_ref: AssistantWebStatsTableQuery
@@ -162,11 +164,13 @@ wrappers:
         description_file: ./prompts/query-web-stats.md
         system_prompt_hint: Web analytics breakdowns — top pages, UTMs, devices, countries, with bounce rate
         ui_resource_uri: ui://posthog/query-results.html
-        use_optimized_output: true
         exclude_properties:
             - response
             - modifiers
             - samplingFactor
+        default_query_fields:
+            modifiers:
+                useWebAnalyticsPreAggregatedTables: true
 
     query-llm-traces-list:
         schema_ref: AssistantTracesQuery

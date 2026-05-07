@@ -10,12 +10,12 @@ Use `query-trends` instead for per-event counts — pageviews, sign-ups, button 
 
 # Inputs
 
-- `dateRange` — defaults to last 7 days when omitted.
-- `compareFilter: { compare: true }` — return prior-period values for change %.
-- `properties` — event/person/session/HogQL filters. Same operator semantics as `query-trends` — see that prompt.
+- `dateRange` — defaults to last 7 days when omitted. Keep ranges short — there is no enforced upper bound and large windows on the slow path can be expensive.
+- `compareFilter: { compare: true }` — return prior-period values for change %. **Roughly doubles query cost** because it runs the same aggregation over the previous period — leave it off unless the user explicitly asks for a comparison.
+- `properties` — event/person/session/cohort filters. Same operator semantics as `query-trends` — see that prompt. Defaults to `[]`.
 - `filterTestAccounts` — exclude internal/test users.
 - `doPathCleaning` — apply team's path-cleaning rules.
-- `conversionGoal` — action ID or custom event name; only set when the user asks about a conversion.
+- `conversionGoal` — pass an `actionId` (must belong to the current project) or a `customEventName`. Disables the pre-aggregated fast path — only set when the user asks about a conversion.
 
 Use `read-data-schema` to validate property names/values when needed.
 
@@ -24,11 +24,10 @@ Use `read-data-schema` to validate property names/values when needed.
 ```json
 {
   "kind": "WebOverviewQuery",
-  "dateRange": { "date_from": "-7d" },
-  "compareFilter": { "compare": true }
+  "dateRange": { "date_from": "-7d" }
 }
 ```
 
 # Out of scope
 
-Goals, web vitals, and external clicks are not exposed via MCP. Fall back to `execute-sql`.
+`conversionGoal` is supported as an input on this tool. Goal-funnel breakdowns (`WebGoalsQuery`), web vitals, and external clicks aren't exposed as separate query modes — fall back to `execute-sql` for those.

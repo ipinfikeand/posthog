@@ -1505,6 +1505,9 @@ function generateQueryWrapperFile(
             if (toolConfig.mcp_version !== undefined) {
                 configParts.push(`mcpVersion: ${toolConfig.mcp_version}`)
             }
+            if (toolConfig.default_query_fields && Object.keys(toolConfig.default_query_fields).length > 0) {
+                configParts.push(`defaultQueryFields: ${JSON.stringify(toolConfig.default_query_fields)}`)
+            }
             return `    '${name}': createQueryWrapper({ ${configParts.join(', ')} }),`
         })
         .join('\n')

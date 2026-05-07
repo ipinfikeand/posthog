@@ -1229,13 +1229,17 @@ const WebAnalyticsPropertyFilter = z.union([
 const WebAnalyticsPropertyFilters = z.array(WebAnalyticsPropertyFilter)
 
 const AssistantWebOverviewQuery = z.object({
-    compareFilter: CompareFilter.describe('Compare the current period to a prior period.').optional(),
+    compareFilter: CompareFilter.describe(
+        'Compare the current period to a prior period. Disabled by default. Enabling roughly doubles query cost — leave it off unless the user explicitly asks for a period-over-period comparison.'
+    ).optional(),
     conversionGoal: z
         .union([WebAnalyticsConversionGoal, z.null()])
-        .describe('Conversion goal (action ID or custom event name) for goal-aware metrics.')
+        .describe(
+            'Conversion goal — pass an `actionId` (must belong to the current project) or a `customEventName`. Adds conversion columns to the response. Disables the pre-aggregated fast path — only set when the user explicitly asks about a conversion.'
+        )
         .optional(),
     dateRange: AssistantDateRangeFilter.describe(
-        'Date range for the query. Defaults to the last 7 days when omitted.'
+        'Date range for the query. Defaults to the last 7 days when omitted. Keep ranges short — the backend has no upper bound and large windows on the slow path (e.g. with `conversionGoal` or `includeAvgTimeOnPage`) can be expensive.'
     ).optional(),
     doPathCleaning: z.coerce
         .boolean()
@@ -1249,8 +1253,10 @@ const AssistantWebOverviewQuery = z.object({
         .optional(),
     kind: z.literal('WebOverviewQuery').default('WebOverviewQuery'),
     properties: WebAnalyticsPropertyFilters.describe(
-        'Property filters applied to the query. Accepts event, person, session, cohort, or HogQL filters. Default: [].'
-    ).optional(),
+        'Property filters applied to the query. Accepts event, person, session, or cohort filters.'
+    )
+        .default([])
+        .optional(),
 })
 
 const WebStatsBreakdown = z.enum([
@@ -1281,17 +1287,23 @@ const WebStatsBreakdown = z.enum([
     'FrustrationMetrics',
 ])
 
+const non_negative_integer = z.coerce.number().int()
+
 const AssistantWebStatsTableQuery = z.object({
     breakdownBy: WebStatsBreakdown.describe(
-        'Property to break down the table by. `Page`, `InitialPage`, `ExitPage`, and `PreviousPage` are all path-style breakdowns and pair naturally with `includeBounceRate` / `includeAvgTimeOnPage`.'
+        'Required. Property to break down the table by. The full enum covers path-style (`Page`, `InitialPage`, `ExitPage`, `PreviousPage`), marketing/source (UTM source/medium/campaign/term/content, channel, referring domain), audience/device (browser, OS, device type, viewport), and geography (country, region, city, timezone, language). Path-style breakdowns pair naturally with `includeBounceRate` / `includeAvgTimeOnPage`.'
     ),
-    compareFilter: CompareFilter.describe('Compare the current period to a prior period.').optional(),
+    compareFilter: CompareFilter.describe(
+        'Compare the current period to a prior period. Disabled by default. Enabling roughly doubles query cost — leave it off unless the user explicitly asks for a period-over-period comparison.'
+    ).optional(),
     conversionGoal: z
         .union([WebAnalyticsConversionGoal, z.null()])
-        .describe('Conversion goal (action ID or custom event name) for goal-aware metrics.')
+        .describe(
+            'Conversion goal — pass an `actionId` (must belong to the current project) or a `customEventName`. Adds conversion columns to the response. Disables the pre-aggregated fast path — only set when the user explicitly asks about a conversion.'
+        )
         .optional(),
     dateRange: AssistantDateRangeFilter.describe(
-        'Date range for the query. Defaults to the last 7 days when omitted.'
+        'Date range for the query. Defaults to the last 7 days when omitted. Keep ranges short — the backend has no upper bound and large windows on the slow path (e.g. with `conversionGoal` or `includeAvgTimeOnPage`) can be expensive.'
     ).optional(),
     doPathCleaning: z.coerce
         .boolean()
@@ -1305,27 +1317,35 @@ const AssistantWebStatsTableQuery = z.object({
         .optional(),
     includeAvgTimeOnPage: z.coerce
         .boolean()
-        .describe('Add an average-time-on-page column. Implies a Page-style breakdown.')
+        .describe(
+            'Add an average-time-on-page column. Implies a Page-style breakdown. Disables the pre-aggregated fast path.'
+        )
         .default(false)
         .optional(),
     includeBounceRate: z.coerce
         .boolean()
-        .describe('Add a bounce-rate column. Most useful with a Page-style breakdown.')
+        .describe('Add a bounce-rate column. Most useful with a path-style breakdown.')
         .default(false)
         .optional(),
     includeHost: z.coerce
         .boolean()
         .describe(
-            'When breaking down by Page, concatenate host + pathname so the same path on different hosts is counted separately.'
+            'When using a path-style breakdown (`Page`, `InitialPage`, `ExitPage`, `PreviousPage`), concatenate host + pathname so the same path on different hosts is counted separately.'
         )
         .default(false)
         .optional(),
     kind: z.literal('WebStatsTableQuery').default('WebStatsTableQuery'),
-    limit: integer.describe('Maximum rows to return.').optional(),
-    offset: integer.describe('Pagination offset.').optional(),
+    limit: positive_integer
+        .describe(
+            'Maximum rows to return. Prefer 10–25 unless the user explicitly asks for more. Hard ceiling enforced at the wrapper.'
+        )
+        .optional(),
+    offset: non_negative_integer.describe('Pagination offset.').optional(),
     properties: WebAnalyticsPropertyFilters.describe(
-        'Property filters applied to the query. Accepts event, person, session, cohort, or HogQL filters. Default: [].'
-    ).optional(),
+        'Property filters applied to the query. Accepts event, person, session, or cohort filters.'
+    )
+        .default([])
+        .optional(),
 })
 
 const AssistantTracesQuery = z.object({
@@ -1455,26 +1475,6 @@ const QueryLifecycleSchema = AssistantLifecycleQuery.extend({
         ),
 })
 
-const QueryWebOverviewSchema = AssistantWebOverviewQuery.extend({
-    output_format: z
-        .enum(['optimized', 'json'])
-        .default('optimized')
-        .optional()
-        .describe(
-            'Output format. "optimized" returns a human-readable summary from server-side formatters (recommended for analysis). "json" returns the raw query results as JSON.'
-        ),
-})
-
-const QueryWebStatsSchema = AssistantWebStatsTableQuery.extend({
-    output_format: z
-        .enum(['optimized', 'json'])
-        .default('optimized')
-        .optional()
-        .describe(
-            'Output format. "optimized" returns a human-readable summary from server-side formatters (recommended for analysis). "json" returns the raw query results as JSON.'
-        ),
-})
-
 const QueryTrendsActorsSchema = AssistantTrendsActorsQuery.extend({
     output_format: z
         .enum(['optimized', 'json'])
@@ -1538,19 +1538,21 @@ export const GENERATED_TOOLS: Record<string, ReturnType<typeof createQueryWrappe
     }),
     'query-web-overview': createQueryWrapper({
         name: 'query-web-overview',
-        schema: QueryWebOverviewSchema,
+        schema: AssistantWebOverviewQuery,
         kind: 'WebOverviewQuery',
         uiResourceUri: 'ui://posthog/query-results.html',
-        outputFormat: 'optimized',
+        outputFormat: 'json',
         mcpVersion: 2,
+        defaultQueryFields: { modifiers: { useWebAnalyticsPreAggregatedTables: true } },
     }),
     'query-web-stats': createQueryWrapper({
         name: 'query-web-stats',
-        schema: QueryWebStatsSchema,
+        schema: AssistantWebStatsTableQuery,
         kind: 'WebStatsTableQuery',
         uiResourceUri: 'ui://posthog/query-results.html',
-        outputFormat: 'optimized',
+        outputFormat: 'json',
         mcpVersion: 2,
+        defaultQueryFields: { modifiers: { useWebAnalyticsPreAggregatedTables: true } },
     }),
     'query-llm-traces-list': createQueryWrapper({
         name: 'query-llm-traces-list',

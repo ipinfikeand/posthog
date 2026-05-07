@@ -10443,15 +10443,30 @@ class AssistantWebAnalyticsQueryBase(BaseModel):
         extra="forbid",
     )
     compareFilter: CompareFilter | None = Field(
-        default=None, description="Compare the current period to a prior period."
+        default=None,
+        description=(
+            "Compare the current period to a prior period. Disabled by default."
+            " Enabling roughly doubles query cost — leave it off unless the user"
+            " explicitly asks for a period-over-period comparison."
+        ),
     )
     conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
         default=None,
-        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+        description=(
+            "Conversion goal — pass an `actionId` (must belong to the current project)"
+            " or a `customEventName`. Adds conversion columns to the response. Disables"
+            " the pre-aggregated fast path — only set when the user explicitly asks"
+            " about a conversion."
+        ),
     )
     dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
         default=None,
-        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+        description=(
+            "Date range for the query. Defaults to the last 7 days when omitted. Keep"
+            " ranges short — the backend has no upper bound and large windows on the"
+            " slow path (e.g. with `conversionGoal` or `includeAvgTimeOnPage`) can be"
+            " expensive."
+        ),
     )
     doPathCleaning: bool | None = Field(
         default=False,
@@ -10464,11 +10479,8 @@ class AssistantWebAnalyticsQueryBase(BaseModel):
     properties: (
         list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
     ) = Field(
-        default=None,
-        description=(
-            "Property filters applied to the query. Accepts event, person, session,"
-            " cohort, or HogQL filters. Default: []."
-        ),
+        default=[],
+        description=("Property filters applied to the query. Accepts event, person, session, or cohort filters."),
     )
 
 
@@ -10477,15 +10489,30 @@ class AssistantWebOverviewQuery(BaseModel):
         extra="forbid",
     )
     compareFilter: CompareFilter | None = Field(
-        default=None, description="Compare the current period to a prior period."
+        default=None,
+        description=(
+            "Compare the current period to a prior period. Disabled by default."
+            " Enabling roughly doubles query cost — leave it off unless the user"
+            " explicitly asks for a period-over-period comparison."
+        ),
     )
     conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
         default=None,
-        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+        description=(
+            "Conversion goal — pass an `actionId` (must belong to the current project)"
+            " or a `customEventName`. Adds conversion columns to the response. Disables"
+            " the pre-aggregated fast path — only set when the user explicitly asks"
+            " about a conversion."
+        ),
     )
     dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
         default=None,
-        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+        description=(
+            "Date range for the query. Defaults to the last 7 days when omitted. Keep"
+            " ranges short — the backend has no upper bound and large windows on the"
+            " slow path (e.g. with `conversionGoal` or `includeAvgTimeOnPage`) can be"
+            " expensive."
+        ),
     )
     doPathCleaning: bool | None = Field(
         default=False,
@@ -10499,11 +10526,8 @@ class AssistantWebOverviewQuery(BaseModel):
     properties: (
         list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
     ) = Field(
-        default=None,
-        description=(
-            "Property filters applied to the query. Accepts event, person, session,"
-            " cohort, or HogQL filters. Default: []."
-        ),
+        default=[],
+        description=("Property filters applied to the query. Accepts event, person, session, or cohort filters."),
     )
 
 
@@ -10514,21 +10538,40 @@ class AssistantWebStatsTableQuery(BaseModel):
     breakdownBy: WebStatsBreakdown = Field(
         ...,
         description=(
-            "Property to break down the table by. `Page`, `InitialPage`, `ExitPage`,"
-            " and `PreviousPage` are all path-style breakdowns and pair naturally with"
-            " `includeBounceRate` / `includeAvgTimeOnPage`."
+            "Required. Property to break down the table by. The full enum covers"
+            " path-style (`Page`, `InitialPage`, `ExitPage`, `PreviousPage`),"
+            " marketing/source (UTM source/medium/campaign/term/content, channel,"
+            " referring domain), audience/device (browser, OS, device type, viewport),"
+            " and geography (country, region, city, timezone, language). Path-style"
+            " breakdowns pair naturally with `includeBounceRate` /"
+            " `includeAvgTimeOnPage`."
         ),
     )
     compareFilter: CompareFilter | None = Field(
-        default=None, description="Compare the current period to a prior period."
+        default=None,
+        description=(
+            "Compare the current period to a prior period. Disabled by default."
+            " Enabling roughly doubles query cost — leave it off unless the user"
+            " explicitly asks for a period-over-period comparison."
+        ),
     )
     conversionGoal: ActionConversionGoal | CustomEventConversionGoal | None = Field(
         default=None,
-        description=("Conversion goal (action ID or custom event name) for goal-aware metrics."),
+        description=(
+            "Conversion goal — pass an `actionId` (must belong to the current project)"
+            " or a `customEventName`. Adds conversion columns to the response. Disables"
+            " the pre-aggregated fast path — only set when the user explicitly asks"
+            " about a conversion."
+        ),
     )
     dateRange: AssistantDateRange | AssistantDurationRange | None = Field(
         default=None,
-        description=("Date range for the query. Defaults to the last 7 days when omitted."),
+        description=(
+            "Date range for the query. Defaults to the last 7 days when omitted. Keep"
+            " ranges short — the backend has no upper bound and large windows on the"
+            " slow path (e.g. with `conversionGoal` or `includeAvgTimeOnPage`) can be"
+            " expensive."
+        ),
     )
     doPathCleaning: bool | None = Field(
         default=False,
@@ -10540,30 +10583,36 @@ class AssistantWebStatsTableQuery(BaseModel):
     )
     includeAvgTimeOnPage: bool | None = Field(
         default=False,
-        description=("Add an average-time-on-page column. Implies a Page-style breakdown."),
+        description=(
+            "Add an average-time-on-page column. Implies a Page-style breakdown. Disables the pre-aggregated fast path."
+        ),
     )
     includeBounceRate: bool | None = Field(
         default=False,
-        description=("Add a bounce-rate column. Most useful with a Page-style breakdown."),
+        description=("Add a bounce-rate column. Most useful with a path-style breakdown."),
     )
     includeHost: bool | None = Field(
         default=False,
         description=(
-            "When breaking down by Page, concatenate host + pathname so the same path"
-            " on different hosts is counted separately."
+            "When using a path-style breakdown (`Page`, `InitialPage`, `ExitPage`,"
+            " `PreviousPage`), concatenate host + pathname so the same path on"
+            " different hosts is counted separately."
         ),
     )
     kind: Literal["WebStatsTableQuery"] = "WebStatsTableQuery"
-    limit: int | None = Field(default=None, description="Maximum rows to return.")
-    offset: int | None = Field(default=None, description="Pagination offset.")
+    limit: conint(ge=1) | None = Field(
+        default=None,
+        description=(
+            "Maximum rows to return. Prefer 10–25 unless the user explicitly asks for"
+            " more. Hard ceiling enforced at the wrapper."
+        ),
+    )
+    offset: conint(ge=0) | None = Field(default=None, description="Pagination offset.")
     properties: (
         list[EventPropertyFilter | PersonPropertyFilter | SessionPropertyFilter | CohortPropertyFilter] | None
     ) = Field(
-        default=None,
-        description=(
-            "Property filters applied to the query. Accepts event, person, session,"
-            " cohort, or HogQL filters. Default: []."
-        ),
+        default=[],
+        description=("Property filters applied to the query. Accepts event, person, session, or cohort filters."),
     )
 
 
@@ -18879,21 +18928,6 @@ class AssistantTrendsActorsQuery(BaseModel):
     source: AssistantTrendsQuery = Field(
         ...,
         description="The source insight query whose data point we are drilling into.",
-    )
-
-
-class AssistantWebAnalyticsQuery(RootModel[AssistantWebOverviewQuery | AssistantWebStatsTableQuery]):
-    root: AssistantWebOverviewQuery | AssistantWebStatsTableQuery = Field(
-        ...,
-        description=(
-            "Discriminated union of the assistant-facing web-analytics query types. The"
-            " `kind` literal selects which mode the agent is invoking.\n\n-"
-            " `WebOverviewQuery`: KPIs (visitors, sessions, bounce rate, duration)\n-"
-            " `WebStatsTableQuery`: tabular breakdowns (top pages, UTMs, devices, …)  "
-            " with optional bounce rate / avg time on page\n\nTime-series of arbitrary"
-            " events (including pageviews) are covered by the generic `query-trends`"
-            " tool — there is no `AssistantWebTrendsQuery`."
-        ),
     )
 
 
