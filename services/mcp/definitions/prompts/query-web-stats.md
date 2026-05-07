@@ -28,7 +28,6 @@ Same filter set as `query-web-overview` (`dateRange`, `compareFilter`, `properti
 Performance hints:
 
 - Leave `compareFilter` off unless the user asks for period-over-period — enabling it roughly doubles query cost.
-- `includeAvgTimeOnPage=true` and `conversionGoal` both disable the pre-aggregated fast path. Avoid combining them with long date ranges.
 - `limit` is capped at 200 by the wrapper. Prefer 10–25 unless the user explicitly asks for more.
 
 Use `read-data-schema` to validate property names/values when needed.

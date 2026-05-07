@@ -23,13 +23,6 @@ interface QueryWrapperConfig<T extends ZodObjectAny> {
     urlPrefix?: string
     /** When set, the tool is only available in this MCP version (1 = v1 only, 2 = v2 only). */
     mcpVersion?: number
-    /**
-     * Default fields merged into the query body before the caller's params. The caller's input
-     * still wins — this only fills in fields the agent didn't set. Useful for opting wrappers
-     * into runner-side optimizations (e.g. `modifiers.useWebAnalyticsPreAggregatedTables`) that
-     * agents shouldn't have to know about.
-     */
-    defaultQueryFields?: Record<string, unknown>
 }
 
 function buildInsightUrl(
@@ -59,7 +52,6 @@ export function createQueryWrapper<T extends ZodObjectAny>(config: QueryWrapperC
                 output_format?: 'optimized' | 'json'
             }
             const query: Record<string, unknown> = {
-                ...config.defaultQueryFields,
                 ...queryParams,
                 kind: config.kind,
             }

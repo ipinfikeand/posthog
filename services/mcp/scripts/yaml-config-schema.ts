@@ -374,13 +374,6 @@ export const QueryWrapperToolConfigSchema = z
          */
         property_defaults: z.record(z.string(), z.unknown()).optional(),
         /**
-         * Fields merged into the query body before the caller's input — the caller wins,
-         * this only fills in fields the agent didn't set. Useful for opting wrappers into
-         * runner-side optimizations (e.g. `modifiers.useWebAnalyticsPreAggregatedTables`)
-         * without exposing the field to agents. Bypasses `exclude_properties`.
-         */
-        default_query_fields: z.record(z.string(), z.unknown()).optional(),
-        /**
          * Override the URL enrichment prefix. When set, `_posthogUrl` uses
          * `{baseUrl}{url_prefix}` instead of the default `/insights/new#q=...`.
          */

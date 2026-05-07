@@ -15,7 +15,7 @@ Use `query-trends` instead for per-event counts — pageviews, sign-ups, button 
 - `properties` — event/person/session/cohort filters. Same operator semantics as `query-trends` — see that prompt. Defaults to `[]`.
 - `filterTestAccounts` — exclude internal/test users.
 - `doPathCleaning` — apply team's path-cleaning rules.
-- `conversionGoal` — pass an `actionId` (must belong to the current project) or a `customEventName`. Disables the pre-aggregated fast path — only set when the user asks about a conversion.
+- `conversionGoal` — pass an `actionId` (must belong to the current project) or a `customEventName`. Only set when the user asks about a conversion.
 
 Use `read-data-schema` to validate property names/values when needed.
 

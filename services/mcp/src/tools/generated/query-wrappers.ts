@@ -1544,7 +1544,6 @@ export const GENERATED_TOOLS: Record<string, ReturnType<typeof createQueryWrappe
         uiResourceUri: 'ui://posthog/query-results.html',
         outputFormat: 'json',
         mcpVersion: 2,
-        defaultQueryFields: { modifiers: { useWebAnalyticsPreAggregatedTables: true } },
     }),
     'query-web-stats': createQueryWrapper({
         name: 'query-web-stats',
@@ -1553,7 +1552,6 @@ export const GENERATED_TOOLS: Record<string, ReturnType<typeof createQueryWrappe
         uiResourceUri: 'ui://posthog/query-results.html',
         outputFormat: 'json',
         mcpVersion: 2,
-        defaultQueryFields: { modifiers: { useWebAnalyticsPreAggregatedTables: true } },
     }),
     'query-llm-traces-list': createQueryWrapper({
         name: 'query-llm-traces-list',

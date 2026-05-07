@@ -146,9 +146,6 @@ wrappers:
             - response
             - modifiers
             - samplingFactor
-        default_query_fields:
-            modifiers:
-                useWebAnalyticsPreAggregatedTables: true
 
     query-web-stats:
         schema_ref: AssistantWebStatsTableQuery
@@ -168,9 +165,6 @@ wrappers:
             - response
             - modifiers
             - samplingFactor
-        default_query_fields:
-            modifiers:
-                useWebAnalyticsPreAggregatedTables: true
 
     query-llm-traces-list:
         schema_ref: AssistantTracesQuery
