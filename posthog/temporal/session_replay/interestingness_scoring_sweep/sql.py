@@ -5,20 +5,42 @@ The serving SELECT mirrors the training query:
     1. `eligible_sessions` — hash-partitioned slice of unscored sessions from
        `raw_sessions_v3` (the table the score is written back to).
        `HAVING max(interestingness_score) IS NULL` is the unscored filter.
+       `ORDER BY session_id_v7 LIMIT chunk_size` makes the chunk
+       deterministic across the two CTE evaluations (see note below).
+
+       The `session_id_str` cast converts `raw_sessions_v3.session_id_v7`
+       (UInt128, ClickHouse UUID layout = two 64-bit halves swapped) back
+       to the canonical hyphenated UUID string used by
+       `session_replay_features.session_id`. Without the byte-swap we
+       produce a decimal string that never matches anything in features.
 
     2. `aggregated_sufficient_statistics` — pulls raw aggregates from
-       `session_replay_features` for those session IDs, mirroring the
-       training query verbatim. The `f.session_id GLOBAL IN (...)` form
-       streams the eligible-session set to every shard so each shard only
-       scans its locally-resident replay rows.
+       `session_replay_features` for those sessions, mirroring the
+       training query. We filter via `(team_id, session_id) GLOBAL IN ...`
+       so the lookup hits the (team_id, session_id) primary key on
+       `session_replay_features` for index-friendly granule skipping
+       instead of a full partition scan, and `GLOBAL IN` ships the
+       eligible-session set as a temp table to every shard so each shard
+       only scans its locally-resident replay rows.
 
     3. `replay_features` — derives the rates/ratios/stats the model was
-       trained on. Same expressions as the training query.
+       trained on. Same expressions as the training query. Carries
+       `team_id` through so the final join is on the same primary-key
+       prefix and can't accidentally cross tenants.
 
     4. Final SELECT — joins `replay_features` back to `eligible_sessions`
-       (inner join: sessions without replay features are dropped and stay
-       NULL in raw_sessions_v3 — they re-appear on the next tick within the
-       lookback window, then naturally fall out once they age past it).
+       on `(team_id, session_id)` (inner join: sessions without replay
+       features are dropped and stay NULL in raw_sessions_v3 — they
+       re-appear on the next tick within the lookback window, then
+       naturally fall out once they age past it).
+
+CTE evaluation note: ClickHouse inlines `WITH ... AS` as a subquery — it
+does not materialize the CTE once and reuse the result. `eligible_sessions`
+is therefore evaluated twice (once for the GLOBAL IN subquery, once for
+the final FROM). The `ORDER BY session_id_v7` before the LIMIT is what
+keeps the two evaluations consistent; without it, two un-ordered LIMITs
+of the same query are not guaranteed to return the same rows, and any
+mismatch would be silently dropped by the inner join.
 
 Score writeback flows through Kafka — see
 `posthog.models.raw_sessions.sessions_v3_score_kafka` for the topic / Kafka
@@ -27,13 +49,14 @@ session; CH consumes via the MV which performs a partial-column insert into
 `writable_raw_sessions_v3`. The AggregatingMergeTree then merges the score
 onto the existing session row without disturbing any other column.
 
-Schema note: a handful of columns referenced by the training query do not yet
-exist on `session_replay_features` (`scroll_to_top_count`, `backspace_count`,
-`long_idle_gap_count`, `console_warn_count`, `network_4xx_count`,
-`network_5xx_count`, `mutation_count`, `viewport_resize_count`,
-`touch_event_count`, `selection_copy_count`, every `*_path_visit_count`, and
-`unique_form_field_count`). These need to be added to the table + Kafka MV
-before this pipeline can run end-to-end. See README.md.
+Schema gap: a handful of columns referenced by the training query do not yet
+exist on the live `session_replay_features` DDL — `scroll_to_top_count`,
+`backspace_count`, `long_idle_gap_count`, `console_warn_count`,
+`network_4xx_count`, `network_5xx_count`, `mutation_count`,
+`viewport_resize_count`, `touch_event_count`, `selection_copy_count`, every
+`*_path_visit_count`, and `unique_form_field_count`. They are declared in
+the HogQL schema but not yet added to the CH table + Kafka MV; the pipeline
+will fail with `Unknown identifier` until that ALTER lands. See README.md.
 """
 
 from posthog.models.raw_sessions.sessions_v3 import DISTRIBUTED_RAW_SESSIONS_TABLE_V3
@@ -50,6 +73,7 @@ SESSION_REPLAY_FEATURES_TABLE = "session_replay_features"
 # --------------------------------------------------------------------------- #
 _AGGREGATED_STATS_FRAGMENT = """
 SELECT
+    f.team_id,
     f.session_id,
     dateDiff('second', min(f.min_first_timestamp), max(f.max_last_timestamp)) AS session_duration_s,
     sum(f.event_count)                              AS event_count,
@@ -115,9 +139,9 @@ SELECT
     uniqExactMerge(f.unique_click_target_count)     AS unique_click_targets,
     uniqExactMerge(f.unique_form_field_count)       AS unique_form_fields
 FROM {features_table} AS f
-WHERE f.session_id GLOBAL IN (SELECT session_id_str FROM eligible_sessions)
+WHERE (f.team_id, f.session_id) GLOBAL IN (SELECT team_id, session_id_str FROM eligible_sessions)
   AND f.min_first_timestamp >= now() - toIntervalDay(%(lookback_days)s)
-GROUP BY f.session_id
+GROUP BY f.team_id, f.session_id
 """.strip()
 
 
@@ -127,6 +151,7 @@ GROUP BY f.session_id
 # --------------------------------------------------------------------------- #
 _REPLAY_FEATURES_FRAGMENT = """
 SELECT
+    f.team_id,
     f.session_id,
     f.event_count                          / nullIf(f.session_duration_s, 0) AS event_rate,
     f.click_count                          / nullIf(f.session_duration_s, 0) AS click_rate,
@@ -207,8 +232,10 @@ def fetch_features_sql(
     Bound parameters: %(of_chunks)s, %(chunk_id)s, %(lookback_days)s, %(chunk_size)s.
 
     Returned columns: `team_id`, `session_id_v7`, `session_timestamp`, then the
-    feature columns in `features.FEATURE_NAMES` order. Row count <= chunk_size,
-    minus any sessions that have no replay features (inner-joined out).
+    feature columns. The SELECT alias list must match the booster's
+    `feature_names` (= `scorer.get_feature_names()`); `validate_features`
+    enforces this on every chunk. Row count <= chunk_size, minus any
+    sessions that have no replay features (inner-joined out).
     """
     raw_table = raw_sessions_table or DISTRIBUTED_RAW_SESSIONS_TABLE_V3()
     return f"""
@@ -217,12 +244,24 @@ WITH eligible_sessions AS (
         team_id,
         session_id_v7,
         session_timestamp,
-        toString(session_id_v7) AS session_id_str
+        -- session_replay_features.session_id is a hyphenated UUID string
+        -- (e.g. "01939d3e-7c80-7b56-bf8d-1e74e5c3b3a1"); raw_sessions_v3
+        -- stores it as the equivalent UInt128 with the two halves swapped
+        -- (CH UUID layout). Reverse the byte-swap and reinterpret to get
+        -- back the canonical UUID string for the join.
+        toString(reinterpretAsUUID(
+            bitOr(bitShiftLeft(session_id_v7, 64), bitShiftRight(session_id_v7, 64))
+        )) AS session_id_str
     FROM {raw_table}
     WHERE session_timestamp >= now() - toIntervalDay(%(lookback_days)s)
       AND cityHash64(session_id_v7) %% %(of_chunks)s = %(chunk_id)s
     GROUP BY team_id, session_id_v7, session_timestamp
     HAVING max(interestingness_score) IS NULL
+    -- ORDER BY makes LIMIT deterministic across the two CTE evaluations
+    -- (CH inlines CTEs as subqueries — without a stable order, the GLOBAL IN
+    -- subquery and the final FROM could pick different subsets and the
+    -- inner join would silently drop the difference).
+    ORDER BY session_id_v7
     LIMIT %(chunk_size)s
 ),
 aggregated_sufficient_statistics AS (
@@ -297,7 +336,7 @@ SELECT
     rf.unique_form_fields,
     rf.page_revisit_count
 FROM eligible_sessions e
-INNER JOIN replay_features rf ON rf.session_id = e.session_id_str
+INNER JOIN replay_features rf ON rf.team_id = e.team_id AND rf.session_id = e.session_id_str
 """.strip()
 
 

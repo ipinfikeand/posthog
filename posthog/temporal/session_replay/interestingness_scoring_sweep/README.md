@@ -161,21 +161,42 @@ mount via a sidecar. First-call latency is paid once per pod; warm with
 `scorer.warmup()` from the worker bootstrap to remove that latency from the
 first chunk's wall time.
 
-`xgboost` is in `pyproject.toml`'s top-level dependencies — every worker
-image carries it. The booster itself is still lazy-loaded inside
-`scorer._load_booster`, so workers pulling other task queues don't pay the
-libomp init cost or the model file's I/O on startup.
+`xgboost` is **not** a top-level dependency — it's in the
+`[dependency-groups].interestingness-scoring` group in `pyproject.toml`.
+That group needs to be installed (`uv sync --group interestingness-scoring`)
+on the dedicated scoring-worker image, and only on that image. Every other
+worker image stays lean — adding xgboost eagerly to all workers pulls
+`nvidia-nccl-cu12` (~322 MB of CUDA libs on Linux, even in CPU-only mode)
+into the layer cache.
+
+Workers that don't have the group installed simply don't import
+`scorer.py` because they never pull `INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE`.
+The lazy import inside `scorer._load_booster` is a defense in depth — if
+some other code path ever imports `scorer` indirectly on a worker without
+the group, the `import xgboost` line is the failure surface, with a clear
+`ModuleNotFoundError` rather than a 322 MB image layer.
 
 ## Updating features
 
-The schema lives in two places that must move together:
+The trained XGBoost booster file is the **single source of truth** for which
+features the model takes. `feature_names` is embedded inside the `.ubj` file
+when training calls `xgb.DMatrix(..., feature_names=...)`, and serving reads
+it back via `scorer.get_feature_names()`. A retrained booster with a
+different feature set updates serving without a code change to `features.py`.
 
-1. `sql.fetch_features_sql` — the SELECT column list, plus the
+What still needs to be kept in sync **outside** the booster file:
+
+1. `sql.fetch_features_sql` — the SELECT column list (plus the
    `_AGGREGATED_STATS_FRAGMENT` and `_REPLAY_FEATURES_FRAGMENT` CTEs that
-   produce them.
-2. `features.FEATURE_NAMES` + `features.FEATURE_RANGES` — what the model
-   expects, plus runtime range checks. There's an import-time `assert` that
-   keeps the two `features.py` tables in sync.
+   produce them) must produce a column named exactly the same as every
+   `feature_names` entry. `validate_features` enforces this on every
+   chunk; a missing or extra column fails fast with `FeatureValidationError`.
+2. `features.FEATURE_RANGES` — runtime dtype + value-bounds contract.
+   xgboost does **not** carry value ranges in the model file, so this is
+   the runtime guard against "model trained on [0, 1] but the SQL started
+   returning 9999". `assert_ranges_cover` runs inside `_load_booster` at
+   warmup; any feature in the booster without a `FEATURE_RANGES` entry
+   raises `MissingFeatureRangeError` before a single chunk is dispatched.
 
 Bump `features.MODEL_FEATURE_SCHEMA_VERSION` whenever the set changes; it
 gets logged on every chunk so distribution shifts can be traced to a deploy.

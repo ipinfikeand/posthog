@@ -48,13 +48,12 @@ from posthog.temporal.session_replay.interestingness_scoring_sweep.constants imp
     TARGET_CHUNK_SIZE,
 )
 from posthog.temporal.session_replay.interestingness_scoring_sweep.features import (
-    FEATURE_NAMES,
     ID_COLUMNS,
     MODEL_FEATURE_SCHEMA_VERSION,
     FeatureValidationError,
     validate_features,
 )
-from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import predict
+from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import get_feature_names, predict
 from posthog.temporal.session_replay.interestingness_scoring_sweep.types import (
     ChunkResult,
     ChunkSpec,
@@ -197,15 +196,22 @@ async def score_chunk_activity(spec: ChunkSpec) -> ChunkResult:
     if df.empty:
         return ChunkResult(chunk_id=spec.chunk_id, scored=0)
 
+    # Pull the feature schema from the booster (single source of truth). This
+    # also triggers `_load_booster` on first call, so the model file is read
+    # before we attempt to validate or predict, and `MissingFeatureRangeError`
+    # surfaces here rather than mid-validate.
+    feature_names = await sync_to_async(get_feature_names, thread_sensitive=False)()
+
     activity.logger.info(
         "interestingness_scoring_sweep.fetched",
         chunk_id=spec.chunk_id,
         rows=len(df),
         feature_schema_version=MODEL_FEATURE_SCHEMA_VERSION,
+        feature_count=len(feature_names),
     )
 
     try:
-        validate_features(df)
+        validate_features(df, feature_names=feature_names)
     except FeatureValidationError as e:
         # Non-retryable: schema drift will fail the same way on retry. Surface
         # as ApplicationError so Temporal stops the activity immediately and
@@ -226,6 +232,6 @@ async def score_chunk_activity(spec: ChunkSpec) -> ChunkResult:
         "interestingness_scoring_sweep.chunk_done",
         chunk_id=spec.chunk_id,
         scored=published,
-        feature_count=len(FEATURE_NAMES),
+        feature_count=len(feature_names),
     )
     return ChunkResult(chunk_id=spec.chunk_id, scored=published)

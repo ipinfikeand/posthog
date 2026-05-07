@@ -1,22 +1,39 @@
-"""Feature schema + parity validation for the session interestingness model.
+"""Runtime range contract + parity validation for the session interestingness model.
 
-The model is trained on the CTE-derived `replay_features` query in `sql.py`.
-This module pins:
+The XGBoost booster is the single source of truth for *which* features the
+model takes — the booster file (`.ubj`) embeds `feature_names` set during
+training. The serving worker reads it via `scorer.get_feature_names()`.
+A retrained booster with a different feature set updates serving without
+a code change here.
 
-    * `FEATURE_NAMES`: the exact column order the booster was trained against.
-    * `FEATURE_RANGES`: per-feature dtype kind + value-range bounds.
+What still lives in this module:
 
-`validate_features(df)` runs once per chunk just before predict and is a
-hard gate: any column-set / order / dtype / range / non-finite mismatch
-raises and the chunk activity fails (marked non_retryable in the workflow,
-so a schema bug fails fast).
+    * `FEATURE_RANGES`: per-feature dtype-kind + value-range bounds.
+      xgboost does **not** carry runtime value bounds (its `feature_types`
+      is a categorical/numeric hint, not a min/max), so this is the runtime
+      guard against "model trained on [0, 1] but the SQL started returning
+      9999". Drift between FEATURE_RANGES and the booster is caught at
+      warmup — every feature_name in the booster must have a FEATURE_RANGES
+      entry, otherwise `MissingFeatureRangeError` is raised at boot.
+    * `validate_features(df, feature_names=...)`: hard runtime gate just
+      before predict. Pure pandas, no xgboost dependency. Callers pass the
+      booster's `feature_names` so the validator stays decoupled from the
+      booster lifecycle and is trivial to unit-test.
 
-When the model is retrained:
-    1. Re-run training; freeze the new `FEATURE_NAMES` order.
-    2. Update `FEATURE_NAMES` and `FEATURE_RANGES` here in lockstep with
-       `sql.py`'s SELECT column order.
-    3. Bump `MODEL_FEATURE_SCHEMA_VERSION` so deploys with mismatched workers
-       are visible in logs.
+Updating features:
+
+    1. Retrain the booster with the new feature set (training = source of truth).
+    2. Add or remove entries in `FEATURE_RANGES` to match the new schema.
+    3. Update `sql.fetch_features_sql`'s SELECT alias list to match.
+    4. Bump `MODEL_FEATURE_SCHEMA_VERSION`.
+
+Drift modes that *will* fail loudly:
+
+    * Booster declares a feature with no `FEATURE_RANGES` entry → warmup
+      raises `MissingFeatureRangeError`.
+    * SQL returns a column the booster doesn't expect, or omits a column the
+      booster expects → first chunk's `validate_features` raises
+      `FeatureValidationError`.
 
 Notes on dtypes:
 
@@ -34,6 +51,7 @@ Notes on dtypes:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -42,73 +60,6 @@ import pandas as pd
 # Bump on every breaking feature-set change. Logged per chunk so distribution
 # shifts can be correlated with deploys.
 MODEL_FEATURE_SCHEMA_VERSION = 1
-
-# Order MUST match the SELECT in `sql.fetch_features_sql`. XGBoost predict is
-# positional unless feature_names is passed; we pass feature_names defensively
-# to make name mismatches a hard fail rather than silent reordering.
-FEATURE_NAMES: tuple[str, ...] = (
-    "event_rate",
-    "click_rate",
-    "keypress_rate",
-    "mouse_activity_rate",
-    "rage_click_rate",
-    "dead_click_rate",
-    "quick_back_rate",
-    "page_visit_rate",
-    "text_selection_rate",
-    "scroll_event_rate",
-    "console_error_rate",
-    "console_error_after_click_rate",
-    "network_request_rate",
-    "network_failed_request_rate",
-    "mouse_mean_x",
-    "mouse_mean_y",
-    "mouse_stddev_x",
-    "mouse_stddev_y",
-    "mouse_distance_per_s",
-    "mouse_direction_change_rate",
-    "mouse_velocity_mean",
-    "mouse_velocity_stddev",
-    "scroll_magnitude_per_s",
-    "scroll_magnitude_per_event",
-    "scroll_direction_reversal_rate",
-    "rapid_scroll_reversal_rate",
-    "max_scroll_y",
-    "inter_action_gap_mean_ms",
-    "inter_action_gap_stddev_ms",
-    "max_idle_gap_ms",
-    "network_request_duration_mean_ms",
-    "network_request_duration_stddev_ms",
-    "network_failure_ratio",
-    "network_4xx_ratio",
-    "network_5xx_ratio",
-    "scroll_to_top_rate",
-    "backspace_ratio",
-    "long_idle_gap_count",
-    "console_warn_rate",
-    "mutation_rate",
-    "viewport_resize_count",
-    "touch_event_rate",
-    "selection_copy_count",
-    "login_path_visit_count",
-    "signup_path_visit_count",
-    "checkout_path_visit_count",
-    "cart_path_visit_count",
-    "billing_path_visit_count",
-    "settings_path_visit_count",
-    "account_path_visit_count",
-    "error_path_visit_count",
-    "not_found_path_visit_count",
-    "admin_path_visit_count",
-    "dashboard_path_visit_count",
-    "onboarding_path_visit_count",
-    "cancel_path_visit_count",
-    "refund_path_visit_count",
-    "unique_urls",
-    "unique_click_targets",
-    "unique_form_fields",
-    "page_revisit_count",
-)
 
 # Columns that identify the row but are NOT model features. Stripped before
 # predict; re-attached for the INSERT.
@@ -217,22 +168,40 @@ FEATURE_RANGES: dict[str, FeatureSpec] = {
 }
 
 
-# Cheap consistency check at import time — guarantees the two tables stay in
-# lockstep without a separate test.
-assert set(FEATURE_RANGES.keys()) == set(FEATURE_NAMES), (
-    "FEATURE_RANGES and FEATURE_NAMES are out of sync; "
-    f"missing={set(FEATURE_NAMES) - set(FEATURE_RANGES.keys())}, "
-    f"extra={set(FEATURE_RANGES.keys()) - set(FEATURE_NAMES)}"
-)
-
-
 class FeatureValidationError(Exception):
     """Raised when a chunk's feature DataFrame doesn't match the trained schema."""
 
 
-def _check_columns(df: pd.DataFrame) -> None:
+class MissingFeatureRangeError(Exception):
+    """Booster declares a feature_name with no FEATURE_RANGES entry."""
+
+
+def assert_ranges_cover(feature_names: Iterable[str]) -> None:
+    """Hard-fail at warmup if any booster feature lacks a runtime range contract.
+
+    Adding a new feature to the booster without adding a `FEATURE_RANGES` entry
+    is a programming error: the validator wouldn't know what to bounds-check
+    against, and bad CH output for the new column would slip through silently.
+    Catch it once at boot, before any chunk runs.
+    """
+    names = tuple(feature_names)
+    if not names:
+        raise MissingFeatureRangeError(
+            "Booster has no feature_names. Train with explicit feature_names "
+            "(pass `feature_names=` to xgb.DMatrix at training time) so serving can pin its schema."
+        )
+    missing = [n for n in names if n not in FEATURE_RANGES]
+    if missing:
+        raise MissingFeatureRangeError(
+            f"Booster declares {len(missing)} feature(s) without a FEATURE_RANGES entry: "
+            f"{missing}. Add a FEATURE_RANGES entry (dtype-kind + value range) for each "
+            "before deploying this model."
+        )
+
+
+def _check_columns(df: pd.DataFrame, feature_names: tuple[str, ...]) -> None:
     """Hard check on column set + order. Order matters for DMatrix construction."""
-    expected = list(FEATURE_NAMES)
+    expected = list(feature_names)
     actual_features = [c for c in df.columns if c not in ID_COLUMNS]
 
     missing = set(expected) - set(actual_features)
@@ -292,8 +261,11 @@ def _check_range(name: str, series: pd.Series, spec: FeatureSpec) -> None:
             )
 
 
-def validate_features(df: pd.DataFrame) -> None:
+def validate_features(df: pd.DataFrame, *, feature_names: tuple[str, ...]) -> None:
     """Hard-fail if `df` doesn't match the trained model's expected schema.
+
+    `feature_names` must be the booster's `feature_names` (production callers
+    get this via `scorer.get_feature_names()`). Pure function; no global state.
 
     O(rows × features). On a 10k-row chunk × 61 features this is single-digit ms.
 
@@ -303,8 +275,8 @@ def validate_features(df: pd.DataFrame) -> None:
     if df.empty:
         return
 
-    _check_columns(df)
-    for name in FEATURE_NAMES:
+    _check_columns(df, feature_names)
+    for name in feature_names:
         series = df[name]
         spec = FEATURE_RANGES[name]
         _check_dtype(name, series, spec.dtype_kind)
@@ -312,9 +284,9 @@ def validate_features(df: pd.DataFrame) -> None:
         _check_range(name, series, spec)
 
 
-def feature_matrix(df: pd.DataFrame) -> pd.DataFrame:
+def feature_matrix(df: pd.DataFrame, *, feature_names: tuple[str, ...]) -> pd.DataFrame:
     """Strip ID columns; return a DataFrame with feature columns in trained order.
 
     Preserves row order so callers can re-attach scores positionally.
     """
-    return df.loc[:, list(FEATURE_NAMES)]
+    return df.loc[:, list(feature_names)]

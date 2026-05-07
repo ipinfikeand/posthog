@@ -9,6 +9,14 @@ single chunk at a time, not split it across many concurrent activities (see
 Loading from disk is paid on first use; pin the model file in the worker
 container image so the load is local + fast.
 
+The booster is the **single source of truth for the feature schema** —
+`get_feature_names()` returns the booster's embedded `feature_names`, and
+`features.assert_ranges_cover` runs at load time to fail loud if the
+booster declares a feature without a runtime range contract. A retrained
+booster with a different feature set updates serving without a code change
+to `features.py` (only `FEATURE_RANGES` needs to be kept in sync, which is
+itself enforced at warmup).
+
 xgboost is lazy-imported on first use so workers that don't pull this task
 queue (most of them) don't pay the import cost or require xgboost to be
 installed at all.
@@ -23,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 
-from posthog.temporal.session_replay.interestingness_scoring_sweep.features import FEATURE_NAMES, feature_matrix
+from posthog.temporal.session_replay.interestingness_scoring_sweep.features import assert_ranges_cover, feature_matrix
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -40,6 +48,10 @@ _DEFAULT_MODEL_PATH = "/models/session_interestingness/model.ubj"
 # Held as Any (not `xgb.Booster | None`) so workers without xgboost installed
 # can still import the module cleanly.
 _BOOSTER: Any = None
+# Cached tuple of `_BOOSTER.feature_names` to avoid the C++ → Python attribute
+# lookup on the predict hot path. Set in lockstep with `_BOOSTER`; reset to
+# None whenever `_BOOSTER` is reset (test fixtures clear both).
+_FEATURE_NAMES: tuple[str, ...] | None = None
 _BOOSTER_LOCK = threading.Lock()
 
 
@@ -52,8 +64,13 @@ def _load_booster() -> Any:
 
     Held under a lock only on first load. Subsequent calls hit the fast path
     (one global-not-None check), so the lock isn't on the per-predict path.
+
+    On first load: validates `booster.feature_names` against `FEATURE_RANGES`
+    via `assert_ranges_cover` and caches the names tuple. A model whose
+    feature set isn't covered by `FEATURE_RANGES` fails loud here, before
+    any chunk is dispatched.
     """
-    global _BOOSTER
+    global _BOOSTER, _FEATURE_NAMES
     if _BOOSTER is not None:
         return _BOOSTER
 
@@ -66,8 +83,22 @@ def _load_booster() -> Any:
         path = _model_path()
         booster = xgb.Booster()
         booster.load_model(path)
-        logger.info("interestingness_scoring_sweep.model_loaded", path=path, num_features=booster.num_features())
+
+        # `booster.feature_names` is set when training passed `feature_names=`
+        # to DMatrix. None / empty here means the model was trained without
+        # explicit names, which serving cannot work with — the SELECT aliases
+        # have nothing to match against. assert_ranges_cover surfaces this.
+        names: tuple[str, ...] = tuple(booster.feature_names or ())
+        assert_ranges_cover(names)
+
+        logger.info(
+            "interestingness_scoring_sweep.model_loaded",
+            path=path,
+            num_features=len(names),
+            feature_names=list(names),
+        )
         _BOOSTER = booster
+        _FEATURE_NAMES = names
         return _BOOSTER
 
 
@@ -76,13 +107,29 @@ def warmup() -> None:
 
     Call from the worker bootstrap so the first activity doesn't pay the
     load cost (typically tens of ms but spikes badly if the model file is
-    on a slow mount).
+    on a slow mount). Also surfaces `MissingFeatureRangeError` at boot
+    rather than on the first chunk.
     """
     _load_booster()
 
 
-class FeatureCountMismatchError(Exception):
-    """Booster's expected feature count != FEATURE_NAMES."""
+def get_feature_names() -> tuple[str, ...]:
+    """Return the booster's `feature_names` tuple — the serving feature schema.
+
+    Triggers a load if the booster hasn't been loaded yet (idempotent).
+    This is what activities call to drive `validate_features` and to log the
+    feature count, instead of importing a hard-coded constant from
+    `features.py`. Booster file = single source of truth for which features
+    the model takes.
+    """
+    if _FEATURE_NAMES is not None:
+        return _FEATURE_NAMES
+    _load_booster()
+    # `_FEATURE_NAMES` is set in lockstep with `_BOOSTER` inside `_load_booster`;
+    # the assert below is a defensive guard to make a programmer error obvious
+    # if the lockstep ever gets broken.
+    assert _FEATURE_NAMES is not None
+    return _FEATURE_NAMES
 
 
 class ScoreRangeError(Exception):
@@ -99,20 +146,15 @@ def predict(df: pd.DataFrame) -> np.ndarray:
     import xgboost as xgb  # noqa: PLC0415  (intentional: lazy import, see module docstring)
 
     booster = _load_booster()
-    if booster.num_features() != len(FEATURE_NAMES):
-        raise FeatureCountMismatchError(
-            f"Booster expects {booster.num_features()} features but FEATURE_NAMES has "
-            f"{len(FEATURE_NAMES)}. Either the model was trained against a different "
-            "feature set or features.py is out of sync with sql.FEATURE_SELECT_FRAGMENT."
-        )
+    feature_names = get_feature_names()
 
     # Empty input — short-circuit before DMatrix, which doesn't accept zero-row
     # frames whose columns have `object` dtype (the pandas default for empties).
     if df.empty:
         return np.empty(0, dtype=np.float32)
 
-    features = feature_matrix(df)
-    dmat = xgb.DMatrix(features, feature_names=list(FEATURE_NAMES))
+    features = feature_matrix(df, feature_names=feature_names)
+    dmat = xgb.DMatrix(features, feature_names=list(feature_names))
     raw = booster.predict(dmat)
 
     scores = np.asarray(raw, dtype=np.float32).reshape(-1)

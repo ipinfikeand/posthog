@@ -1,98 +1,51 @@
 """Shared fixtures for the interestingness_scoring_sweep tests.
 
-The interesting fixture is `trained_model_path` — it trains a real XGBoost
-booster against synthetic data with the production `FEATURE_NAMES` schema,
-saves it to a tmp `.ubj` file, points `SESSION_INTERESTINGNESS_MODEL_PATH`
-at it, and resets the scorer module's singleton. Every test that exercises
-`scorer.predict` runs against an actual booster loaded from disk — the same
-code path the worker hits at runtime.
+Only fixtures that don't need xgboost live here so the module imports cleanly
+on a plain `uv sync --dev` install. The xgboost-dependent fixtures
+(`trained_model_path`, `regression_model_path`) live alongside their only
+consumer in `test_scorer.py`, which carries a module-level
+`pytest.importorskip("xgboost")` — xgboost is in the `interestingness-scoring`
+dependency group, kept off the default worker image to avoid pulling
+nvidia-nccl-cu12 (~322 MB).
+
+The booster is the source of truth for `feature_names` in production. Tests
+that exercise `validate_features` / `feature_matrix` without a real booster
+use `feature_names_for_tests` (= `tuple(FEATURE_RANGES.keys())`) — the
+runtime range contract doubles as the test schema, which keeps the two
+in lockstep without a separate hard-coded list.
+
+To run the full suite (including `test_scorer.py`) locally:
+
+    uv sync --group interestingness-scoring
 """
 
 from __future__ import annotations
-
-from collections.abc import Generator
-from pathlib import Path
 
 import pytest
 
 import numpy as np
 import pandas as pd
-import xgboost as xgb
 
-from posthog.temporal.session_replay.interestingness_scoring_sweep import scorer as scorer_mod
-from posthog.temporal.session_replay.interestingness_scoring_sweep.features import FEATURE_NAMES
-
-
-def _synthetic_training_frame(rows: int, *, seed: int) -> pd.DataFrame:
-    """Return a DataFrame with FEATURE_NAMES columns and uniform-random values.
-
-    Values are deliberately kept in [0, 1] so the same frame works for any
-    feature, including the strict-ratio columns. Labels are a simple linear
-    rule on the first feature so the trained booster has a real signal and
-    won't degenerate to a constant prediction.
-    """
-    rng = np.random.default_rng(seed)
-    data = rng.random((rows, len(FEATURE_NAMES))).astype(np.float32)
-    df = pd.DataFrame(data, columns=list(FEATURE_NAMES))
-    df["__label__"] = (df[FEATURE_NAMES[0]] > 0.5).astype(np.int32)
-    return df
-
-
-def _train_booster(df: pd.DataFrame, *, objective: str = "binary:logistic") -> xgb.Booster:
-    """Train a tiny 2-tree booster on `df` with `FEATURE_NAMES` features and column `__label__`."""
-    features = df[list(FEATURE_NAMES)]
-    labels = df["__label__"].to_numpy()
-    dmat = xgb.DMatrix(features, label=labels, feature_names=list(FEATURE_NAMES))
-    return xgb.train(
-        {"objective": objective, "max_depth": 2, "eta": 0.5, "verbosity": 0},
-        dmat,
-        num_boost_round=2,
-    )
+from posthog.temporal.session_replay.interestingness_scoring_sweep.features import FEATURE_RANGES
 
 
 @pytest.fixture
-def trained_model_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
-    """Train + persist a real binary:logistic booster, point env var at it, reset singleton.
+def feature_names_for_tests() -> tuple[str, ...]:
+    """Feature schema used by tests that don't load a real booster.
 
-    Test functions that need scoring should depend on this fixture. Cleanup:
-    the booster cache in `scorer` is reset both before and after so test
-    ordering doesn't leak a model trained for a different test.
+    Production gets this from `scorer.get_feature_names()` (= booster.feature_names).
+    For unit tests of `validate_features` / `feature_matrix`, we use the
+    `FEATURE_RANGES` dict's keys — that's the runtime range contract and is
+    guaranteed to cover the booster (validated by `assert_ranges_cover` at
+    warmup), so it's a safe stand-in here.
     """
-    df = _synthetic_training_frame(rows=128, seed=42)
-    booster = _train_booster(df)
-    model_path = tmp_path / "model.ubj"
-    booster.save_model(str(model_path))
-
-    monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(model_path))
-    scorer_mod._BOOSTER = None
-    yield model_path
-    scorer_mod._BOOSTER = None
+    return tuple(FEATURE_RANGES.keys())
 
 
 @pytest.fixture
-def regression_model_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
-    """Train a `reg:squarederror` booster — used to exercise the out-of-range guard.
-
-    Regression objective emits raw scores whose magnitude depends on the
-    label range; we deliberately train with labels well outside [0, 1] so
-    the model produces predictions that should trigger `ScoreRangeError`.
-    """
-    df = _synthetic_training_frame(rows=128, seed=7)
-    df["__label__"] = (df[FEATURE_NAMES[0]] * 100).astype(np.float32)  # labels in [0, 100]
-    booster = _train_booster(df, objective="reg:squarederror")
-    model_path = tmp_path / "regression_model.ubj"
-    booster.save_model(str(model_path))
-
-    monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(model_path))
-    scorer_mod._BOOSTER = None
-    yield model_path
-    scorer_mod._BOOSTER = None
-
-
-@pytest.fixture
-def feature_frame() -> pd.DataFrame:
-    """A small, valid feature DataFrame with FEATURE_NAMES columns."""
+def feature_frame(feature_names_for_tests: tuple[str, ...]) -> pd.DataFrame:
+    """A small, valid feature DataFrame keyed by the test feature schema."""
     rng = np.random.default_rng(123)
     rows = 16
-    data = rng.random((rows, len(FEATURE_NAMES))).astype(np.float32)
-    return pd.DataFrame(data, columns=list(FEATURE_NAMES))
+    data = rng.random((rows, len(feature_names_for_tests))).astype(np.float32)
+    return pd.DataFrame(data, columns=list(feature_names_for_tests))

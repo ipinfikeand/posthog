@@ -4,11 +4,18 @@ These tests use a real XGBoost booster trained in-memory by the
 `trained_model_path` fixture, saved to disk, and loaded through the same
 code path the production worker hits. No mocking of xgboost itself —
 the goal is to catch regressions in the actual load + predict path.
+
+Skipped wholesale when xgboost is not installed. xgboost lives in the
+`interestingness-scoring` dependency group rather than the default project
+deps to keep nvidia-nccl-cu12 (~322 MB) out of the standard worker image;
+run `uv sync --group interestingness-scoring` to enable this module
+locally.
 """
 
 from __future__ import annotations
 
 import threading
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -16,15 +23,107 @@ import pytest
 import numpy as np
 import pandas as pd
 
-from posthog.temporal.session_replay.interestingness_scoring_sweep import scorer as scorer_mod
-from posthog.temporal.session_replay.interestingness_scoring_sweep.features import FEATURE_NAMES
-from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import (
-    FeatureCountMismatchError,
+xgb = pytest.importorskip(
+    "xgboost",
+    reason="install via `uv sync --group interestingness-scoring`",
+)
+
+from posthog.temporal.session_replay.interestingness_scoring_sweep import scorer as scorer_mod  # noqa: E402
+from posthog.temporal.session_replay.interestingness_scoring_sweep.features import (  # noqa: E402
+    FEATURE_RANGES,
+    MissingFeatureRangeError,
+)
+from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import (  # noqa: E402
     ScoreRangeError,
     _load_booster,
+    get_feature_names,
     predict,
     warmup,
 )
+
+# Test schema: the runtime range contract is the source of truth for what
+# `validate_features` knows how to bounds-check, so a booster trained against
+# this set is exercising the production load path verbatim.
+_TRAINING_FEATURE_NAMES: tuple[str, ...] = tuple(FEATURE_RANGES.keys())
+
+
+def _synthetic_training_frame(
+    rows: int, *, seed: int, feature_names: tuple[str, ...] = _TRAINING_FEATURE_NAMES
+) -> pd.DataFrame:
+    """Return a DataFrame with the given feature columns and uniform-random values.
+
+    Values are deliberately kept in [0, 1] so the same frame works for any
+    feature, including the strict-ratio columns. Labels are a simple linear
+    rule on the first feature so the trained booster has a real signal and
+    won't degenerate to a constant prediction.
+    """
+    rng = np.random.default_rng(seed)
+    data = rng.random((rows, len(feature_names))).astype(np.float32)
+    df = pd.DataFrame(data, columns=list(feature_names))
+    df["__label__"] = (df[feature_names[0]] > 0.5).astype(np.int32)
+    return df
+
+
+def _train_booster(
+    df: pd.DataFrame,
+    *,
+    feature_names: tuple[str, ...] = _TRAINING_FEATURE_NAMES,
+    objective: str = "binary:logistic",
+) -> xgb.Booster:
+    """Train a tiny 2-tree booster on `df` with the given features and column `__label__`."""
+    features = df[list(feature_names)]
+    labels = df["__label__"].to_numpy()
+    dmat = xgb.DMatrix(features, label=labels, feature_names=list(feature_names))
+    return xgb.train(
+        {"objective": objective, "max_depth": 2, "eta": 0.5, "verbosity": 0},
+        dmat,
+        num_boost_round=2,
+    )
+
+
+def _reset_booster_singleton() -> None:
+    """Clear the scorer module's cached booster + feature_names so the next
+    `_load_booster()` call re-reads from disk + repopulates the cache."""
+    scorer_mod._BOOSTER = None
+    scorer_mod._FEATURE_NAMES = None
+
+
+@pytest.fixture
+def trained_model_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
+    """Train + persist a real binary:logistic booster, point env var at it, reset singleton.
+
+    Cleanup: the booster cache in `scorer` is reset both before and after
+    so test ordering doesn't leak a model trained for a different test.
+    """
+    df = _synthetic_training_frame(rows=128, seed=42)
+    booster = _train_booster(df)
+    model_path = tmp_path / "model.ubj"
+    booster.save_model(str(model_path))
+
+    monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(model_path))
+    _reset_booster_singleton()
+    yield model_path
+    _reset_booster_singleton()
+
+
+@pytest.fixture
+def regression_model_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
+    """Train a `reg:squarederror` booster — used to exercise the out-of-range guard.
+
+    Regression objective emits raw scores whose magnitude depends on the
+    label range; we deliberately train with labels well outside [0, 1] so
+    the model produces predictions that should trigger `ScoreRangeError`.
+    """
+    df = _synthetic_training_frame(rows=128, seed=7)
+    df["__label__"] = (df[_TRAINING_FEATURE_NAMES[0]] * 100).astype(np.float32)  # labels in [0, 100]
+    booster = _train_booster(df, objective="reg:squarederror")
+    model_path = tmp_path / "regression_model.ubj"
+    booster.save_model(str(model_path))
+
+    monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(model_path))
+    _reset_booster_singleton()
+    yield model_path
+    _reset_booster_singleton()
 
 
 class TestModelLoading:
@@ -32,7 +131,7 @@ class TestModelLoading:
         booster = _load_booster()
         # If load failed, _load_booster would raise; getting a Booster back is
         # the main assertion. num_features is a cheap sanity probe.
-        assert booster.num_features() == len(FEATURE_NAMES)
+        assert booster.num_features() == len(_TRAINING_FEATURE_NAMES)
 
     def test_load_booster_caches_singleton(self, trained_model_path: Path) -> None:
         # The hot path (every chunk's predict) hits this. It must hand back
@@ -73,9 +172,54 @@ class TestModelLoading:
         # at the first chunk, not silently return a default booster.
         nonexistent = tmp_path / "does_not_exist.ubj"
         monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(nonexistent))
-        scorer_mod._BOOSTER = None
+        _reset_booster_singleton()
         with pytest.raises(Exception):
             _load_booster()
+
+
+class TestGetFeatureNames:
+    def test_returns_booster_feature_names(self, trained_model_path: Path) -> None:
+        # The booster IS the source of truth — get_feature_names must hand
+        # back exactly what training pinned in the model file, in order.
+        names = get_feature_names()
+        assert names == _TRAINING_FEATURE_NAMES
+
+    def test_triggers_lazy_load_on_first_call(self, trained_model_path: Path) -> None:
+        # Activities call get_feature_names() before any predict() — it must
+        # trigger the underlying _load_booster() instead of failing because
+        # warmup() hasn't been called yet.
+        assert scorer_mod._BOOSTER is None
+        names = get_feature_names()
+        assert scorer_mod._BOOSTER is not None
+        assert len(names) == len(_TRAINING_FEATURE_NAMES)
+
+    def test_caches_after_first_load(self, trained_model_path: Path) -> None:
+        # Per-predict overhead matters; `_FEATURE_NAMES` is a cached tuple so
+        # we don't pay a C++ -> Python attr crossing on every chunk.
+        first = get_feature_names()
+        second = get_feature_names()
+        assert first is second  # exact same tuple object
+
+    def test_load_raises_when_booster_has_features_outside_ranges(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A retrained booster that introduces a feature without a
+        # FEATURE_RANGES entry must fail at warmup, not on the first chunk —
+        # otherwise the validator wouldn't know what to bounds-check against
+        # and bad CH output for the new column would slip through silently.
+        df = _synthetic_training_frame(rows=64, seed=0, feature_names=("event_rate", "bogus_new_feature"))
+        booster = _train_booster(df, feature_names=("event_rate", "bogus_new_feature"))
+        model_path = tmp_path / "uncovered_model.ubj"
+        booster.save_model(str(model_path))
+
+        monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(model_path))
+        _reset_booster_singleton()
+
+        try:
+            with pytest.raises(MissingFeatureRangeError, match="bogus_new_feature"):
+                _load_booster()
+        finally:
+            _reset_booster_singleton()
 
 
 class TestPredict:
@@ -123,13 +267,13 @@ class TestPredict:
         # position. That means we get the same scores regardless of how the
         # caller orders the columns — a regression here would silently mis-score.
         scores_a = predict(feature_frame)
-        shuffled = feature_frame.loc[:, list(reversed(FEATURE_NAMES))]
+        shuffled = feature_frame.loc[:, list(reversed(_TRAINING_FEATURE_NAMES))]
         scores_b = predict(shuffled)
 
         np.testing.assert_array_equal(scores_a, scores_b)
 
     def test_predict_empty_dataframe(self, trained_model_path: Path) -> None:
-        df = pd.DataFrame(columns=list(FEATURE_NAMES))
+        df = pd.DataFrame(columns=list(_TRAINING_FEATURE_NAMES))
         scores = predict(df)
         assert scores.shape == (0,)
 
@@ -141,36 +285,3 @@ class TestPredictGuards:
         # garbage scores into ClickHouse.
         with pytest.raises(ScoreRangeError, match=r"outside \[0, 1\]"):
             predict(feature_frame)
-
-    def test_feature_count_mismatch_raises(
-        self,
-        feature_frame: pd.DataFrame,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        # Simulate deploying a model trained against a different feature set —
-        # train a booster with 3 features, point env var at it, and call predict
-        # with the production 61-feature frame. Booster.num_features() (3) won't
-        # match len(FEATURE_NAMES) (61), so the guard must fire.
-        import xgboost as xgb  # noqa: PLC0415  (test-local; matches scorer's lazy-import policy)
-
-        rng = np.random.default_rng(0)
-        small_features = pd.DataFrame(rng.random((32, 3)), columns=["a", "b", "c"])
-        labels = (small_features["a"] > 0.5).astype(np.int32).to_numpy()
-        dmat = xgb.DMatrix(small_features, label=labels, feature_names=list(small_features.columns))
-        small_booster = xgb.train(
-            {"objective": "binary:logistic", "max_depth": 2, "eta": 0.5, "verbosity": 0},
-            dmat,
-            num_boost_round=2,
-        )
-        path = tmp_path / "small_model.ubj"
-        small_booster.save_model(str(path))
-
-        monkeypatch.setenv("SESSION_INTERESTINGNESS_MODEL_PATH", str(path))
-        scorer_mod._BOOSTER = None
-
-        try:
-            with pytest.raises(FeatureCountMismatchError, match="Booster expects"):
-                predict(feature_frame)
-        finally:
-            scorer_mod._BOOSTER = None
