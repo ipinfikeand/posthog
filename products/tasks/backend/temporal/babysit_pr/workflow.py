@@ -129,8 +129,6 @@ class BabysitPullRequestWorkflow(PostHogWorkflow):
 
         while not self._terminal and self._ci_repetitions < MAX_CI_REPETITIONS:
             await self._wait_for_idle_period()
-            if self._terminal:
-                break
             decision = await self._evaluate_pr()
             if decision == BabysitDecision.FIRE:
                 await self._dispatch_ci_fix()
