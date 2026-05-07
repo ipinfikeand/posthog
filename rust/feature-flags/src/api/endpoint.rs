@@ -8,7 +8,7 @@ use crate::{
         },
     },
     handler::{
-        decoding, process_request, run_with_canonical_log, with_canonical_log,
+        body_logger, decoding, process_request, run_with_canonical_log, with_canonical_log,
         FlagsCanonicalLogLine, RequestContext,
     },
     metrics::consts::{FLAG_RATE_LIMIT_CHECK_TIME_MS, FLAG_TOKEN_EXTRACT_TIME_MS},
@@ -440,11 +440,13 @@ pub async fn flags(
     // Refresh the per-team body-logging config from Postgres if the
     // in-memory copy is stale. Cheap atomic check inline; spawned only when
     // due, so the DB query never adds latency to /flags responses.
-    if state.body_logger.is_stale(60) {
+    if state.body_logger.is_stale(body_logger::REFRESH_TTL_SECS) {
         let logger = state.body_logger.clone();
         let pool = state.database_pools.non_persons_reader.clone();
         tokio::spawn(async move {
-            logger.refresh_if_stale(&pool, 60).await;
+            logger
+                .refresh_if_stale(&pool, body_logger::REFRESH_TTL_SECS)
+                .await;
         });
     }
 
@@ -452,13 +454,12 @@ pub async fn flags(
         Ok(response) => {
             // Emit the body-log event before `response` is consumed by the
             // versioning step. Skipped when the team isn't opted in.
-            if let (Some(team_id), Some(raw_body)) = (log.team_id, raw_body_for_logging.as_ref()) {
-                if let Some(patterns) = state.body_logger.for_team(team_id) {
-                    state
-                        .body_logger
-                        .emit_event(request_id, team_id, raw_body, &response, &patterns);
-                }
-            }
+            state.body_logger.log_response(
+                request_id,
+                log.team_id,
+                raw_body_for_logging.as_deref(),
+                &response,
+            );
 
             // Determine the response format based on whether request is from decide and version
             match get_versioned_response(is_from_decide, query_version, response) {

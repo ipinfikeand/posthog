@@ -2,12 +2,9 @@
 //!
 //! Configured via the `FLAGS_LOG_BODIES_TEAMS` env var at startup and refreshed
 //! at runtime from `posthog_instancesetting`
-//! (key: `constance:posthog:FLAGS_LOG_BODIES_TEAMS`) every ~60s. Mirrors the
-//! propagation pattern used by `RATE_LIMITING_ALLOW_LIST_TEAMS` in
-//! `api/flag_definitions.rs`.
+//! (key: `constance:posthog:FLAGS_LOG_BODIES_TEAMS`) every ~60s.
 //!
-//! Stored per-team config maps a team ID to a list of compiled wildcard
-//! patterns:
+//! Stored per-team config maps a team ID to a list of patterns:
 //! - empty list = log every flag in the response
 //! - non-empty list = filter the response's `flags` map to keys matching any pattern
 //!
@@ -19,6 +16,7 @@ use crate::api::types::{FlagDetails, FlagsResponse};
 use crate::config::BodyLogTeams;
 use common_types::TeamId;
 use once_cell::sync::Lazy;
+use regex::Regex;
 use serde::Serialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -28,116 +26,70 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::warn;
 use uuid::Uuid;
 
+/// Refresh window for the in-memory team config; matches the Django-side
+/// `RATE_LIMITING_ALLOW_LIST_TEAMS` cadence so admins see propagation in <1m.
+pub const REFRESH_TTL_SECS: u64 = 60;
+
 /// `tracing` event-name field, also used as the message text. Loki joins this
 /// to the canonical log line on `request_id`.
 const BODY_LOG_EVENT: &str = "flags_body_log";
 
 static CONSTANCE_KEY: Lazy<String> = Lazy::new(|| constance_key("FLAGS_LOG_BODIES_TEAMS"));
 
-/// Compiled glob-style pattern: literal segments separated by `*`.
-///
-/// `"checkout-*"` → `["checkout-"]` with `prefix_anchored = true`,
-/// `suffix_anchored = false`. `"my-feature"` (no `*`) → exact match.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CompiledPattern {
-    segments: Vec<String>,
-    prefix_anchored: bool,
-    suffix_anchored: bool,
+/// Compiles a glob-style pattern (`*` wildcard, no other metacharacters) into
+/// an anchored regex. Exact keys (no `*`) compile to `^literal$`.
+fn compile_pattern(raw: &str) -> Result<Regex, regex::Error> {
+    let escaped = regex::escape(raw).replace("\\*", ".*");
+    Regex::new(&format!("^{escaped}$"))
 }
 
-impl CompiledPattern {
-    fn compile(pattern: &str) -> Self {
-        let prefix_anchored = !pattern.starts_with('*');
-        let suffix_anchored = !pattern.ends_with('*');
-        let segments: Vec<String> = pattern
-            .split('*')
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .collect();
-        Self {
-            segments,
-            prefix_anchored,
-            suffix_anchored,
-        }
-    }
-
-    fn matches(&self, key: &str) -> bool {
-        if self.segments.is_empty() {
-            return true;
-        }
-        if self.segments.len() == 1 && self.prefix_anchored && self.suffix_anchored {
-            return key == self.segments[0];
-        }
-
-        let segs = &self.segments;
-        let mut remaining = key;
-
-        if self.prefix_anchored {
-            match remaining.strip_prefix(segs[0].as_str()) {
-                Some(rest) => remaining = rest,
-                None => return false,
-            }
-        }
-
-        let middle_start = if self.prefix_anchored { 1 } else { 0 };
-        let middle_end = if self.suffix_anchored {
-            segs.len().saturating_sub(1)
-        } else {
-            segs.len()
-        };
-
-        if middle_start > middle_end {
-            return false;
-        }
-
-        for segment in &segs[middle_start..middle_end] {
-            match remaining.find(segment.as_str()) {
-                Some(idx) => remaining = &remaining[idx + segment.len()..],
-                None => return false,
-            }
-        }
-
-        if self.suffix_anchored {
-            let last = segs[segs.len() - 1].as_str();
-            if !remaining.ends_with(last) {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-/// Per-team body-logging filter. Holds both the original pattern strings (for
-/// faithful round-tripping into log fields) and their compiled forms (for
-/// matching). `raw.is_empty()` means "log every flag" for this team.
+/// Per-team body-logging filter. Holds the joined pattern strings (for the
+/// `response_filter_patterns` log field) and their compiled regexes (for
+/// matching). `compiled.is_empty()` means "log every flag" for this team.
 #[derive(Debug)]
 pub struct TeamPatterns {
-    raw: Vec<String>,
-    compiled: Vec<CompiledPattern>,
+    /// Original patterns pre-joined with `,` for the log field; built once at
+    /// refresh time so the opt-in path doesn't allocate per request.
+    raw_joined: String,
+    compiled: Vec<Regex>,
 }
 
 impl TeamPatterns {
     fn new(raw: Vec<String>) -> Self {
-        let compiled = raw.iter().map(|p| CompiledPattern::compile(p)).collect();
-        Self { raw, compiled }
+        let raw_joined = raw.join(",");
+        let compiled = raw
+            .iter()
+            .filter_map(|p| match compile_pattern(p) {
+                Ok(re) => Some(re),
+                Err(e) => {
+                    warn!(pattern = %p, error = %e, "invalid FLAGS_LOG_BODIES_TEAMS pattern, skipping");
+                    None
+                }
+            })
+            .collect();
+        Self {
+            raw_joined,
+            compiled,
+        }
     }
 
-    /// True when the response's flags should be filtered. False = log all.
-    pub fn is_filter_active(&self) -> bool {
-        !self.raw.is_empty()
+    fn is_filter_active(&self) -> bool {
+        !self.compiled.is_empty()
     }
 
     /// True when `key` either matches one of the configured patterns, or
     /// when no patterns are configured (log-all mode).
     pub fn matches(&self, key: &str) -> bool {
-        !self.is_filter_active() || self.compiled.iter().any(|p| p.matches(key))
+        !self.is_filter_active() || self.compiled.iter().any(|re| re.is_match(key))
     }
 }
 
 /// In-memory body-logging config, refreshed periodically from Postgres.
 pub struct BodyLogger {
     config: RwLock<HashMap<TeamId, Arc<TeamPatterns>>>,
+    /// Last `BodyLogTeams` we successfully applied; used to skip the recompile
+    /// + write-lock when the DB row is unchanged.
+    last_applied: RwLock<Option<BodyLogTeams>>,
     /// Cheap short-circuit for the common no-team-enabled path. Tracks
     /// whether the config map is non-empty so per-request lookups can skip
     /// the read lock entirely. Updated atomically alongside `config`.
@@ -151,10 +103,11 @@ pub struct BodyLogger {
 
 impl BodyLogger {
     pub fn new(initial: BodyLogTeams, request_max_bytes: usize) -> Self {
-        let map = compile_all(initial);
+        let map = compile_all(&initial);
         let any_enabled = AtomicBool::new(!map.is_empty());
         Self {
             config: RwLock::new(map),
+            last_applied: RwLock::new(Some(initial)),
             any_enabled,
             last_refresh: AtomicU64::new(0),
             request_max_bytes,
@@ -201,10 +154,22 @@ impl BodyLogger {
     }
 
     fn update(&self, raw: BodyLogTeams) {
-        let map = compile_all(raw);
+        if self
+            .last_applied
+            .read()
+            .expect("body logger last_applied poisoned")
+            .as_ref()
+            == Some(&raw)
+        {
+            return;
+        }
+        let map = compile_all(&raw);
         self.any_enabled.store(!map.is_empty(), Ordering::Relaxed);
-        let mut cfg = self.config.write().expect("body logger config poisoned");
-        *cfg = map;
+        *self.config.write().expect("body logger config poisoned") = map;
+        *self
+            .last_applied
+            .write()
+            .expect("body logger last_applied poisoned") = Some(raw);
     }
 
     /// Refresh the body-log config from the database if the in-memory copy is
@@ -231,23 +196,26 @@ impl BodyLogger {
         }
     }
 
-    /// Emit the `flags_body_log` tracing event for a request that was
-    /// resolved to an opted-in team. The caller is responsible for ensuring
-    /// `for_team(team_id)` returned `Some(patterns)` and that `raw_body`
-    /// is the original request bytes.
-    pub fn emit_event(
+    /// Emit the `flags_body_log` tracing event when `team_id` resolves to an
+    /// opted-in team. No-op otherwise.
+    pub fn log_response(
         &self,
         request_id: Uuid,
-        team_id: TeamId,
-        raw_body: &[u8],
+        team_id: Option<TeamId>,
+        raw_body: Option<&[u8]>,
         response: &FlagsResponse,
-        patterns: &TeamPatterns,
     ) {
+        let (Some(team_id), Some(raw_body)) = (team_id, raw_body) else {
+            return;
+        };
+        let Some(patterns) = self.for_team(team_id) else {
+            return;
+        };
+
         let (truncated, request_truncated, request_original_size_bytes) =
             truncate_body(raw_body, self.request_max_bytes);
         let request_body = String::from_utf8_lossy(truncated);
-        let (response_body, total, logged) = serialize_filtered_response(response, patterns);
-        let response_filter_patterns = patterns.raw.join(",");
+        let (response_body, total, logged) = serialize_filtered_response(response, &patterns);
 
         tracing::info!(
             event = BODY_LOG_EVENT,
@@ -258,7 +226,7 @@ impl BodyLogger {
             request_truncated = request_truncated,
             request_original_size_bytes = request_original_size_bytes,
             response_filtered = patterns.is_filter_active(),
-            response_filter_patterns = %response_filter_patterns,
+            response_filter_patterns = %patterns.raw_joined,
             response_flag_count_total = total,
             response_flag_count_logged = logged,
             BODY_LOG_EVENT,
@@ -266,10 +234,10 @@ impl BodyLogger {
     }
 }
 
-fn compile_all(raw: BodyLogTeams) -> HashMap<TeamId, Arc<TeamPatterns>> {
+fn compile_all(raw: &BodyLogTeams) -> HashMap<TeamId, Arc<TeamPatterns>> {
     raw.0
-        .into_iter()
-        .map(|(team_id, patterns)| (team_id, Arc::new(TeamPatterns::new(patterns))))
+        .iter()
+        .map(|(team_id, patterns)| (*team_id, Arc::new(TeamPatterns::new(patterns.clone()))))
         .collect()
 }
 
@@ -298,11 +266,12 @@ pub fn truncate_body(body: &[u8], max_bytes: usize) -> (&[u8], bool, usize) {
         return (body, false, original_len);
     }
 
-    // Walk back from `max_bytes` past any UTF-8 continuation bytes (10xxxxxx)
-    // to the start of the last fully-included character.
     let mut end = max_bytes;
-    while end > 0 && (body[end] & 0b1100_0000) == 0b1000_0000 {
-        end -= 1;
+    while end > 0 {
+        match std::str::from_utf8(&body[..end]) {
+            Ok(_) => break,
+            Err(e) => end = e.valid_up_to(),
+        }
     }
     (&body[..end], true, original_len)
 }
@@ -319,8 +288,7 @@ struct LoggedResponse<'a> {
 }
 
 /// Serialize the response with `flags` filtered to keys matching `patterns`.
-/// Returns the JSON string plus `(total_flags, logged_flags)` counts. One
-/// serialization pass — no intermediate `serde_json::Value`.
+/// Returns the JSON string plus `(total_flags, logged_flags)` counts.
 fn serialize_filtered_response(
     response: &FlagsResponse,
     patterns: &TeamPatterns,
@@ -388,47 +356,46 @@ mod tests {
         FlagsResponse::new(false, flags, None, Uuid::nil())
     }
 
+    fn matches(pattern: &str, key: &str) -> bool {
+        compile_pattern(pattern).unwrap().is_match(key)
+    }
+
     #[test]
     fn pattern_exact_match() {
-        let p = CompiledPattern::compile("my-feature");
-        assert!(p.matches("my-feature"));
-        assert!(!p.matches("my-feature-2"));
-        assert!(!p.matches("not-my-feature"));
+        assert!(matches("my-feature", "my-feature"));
+        assert!(!matches("my-feature", "my-feature-2"));
+        assert!(!matches("my-feature", "not-my-feature"));
     }
 
     #[test]
     fn pattern_prefix_wildcard() {
-        let p = CompiledPattern::compile("checkout-*");
-        assert!(p.matches("checkout-foo"));
-        assert!(p.matches("checkout-"));
-        assert!(p.matches("checkout-bar-baz"));
-        assert!(!p.matches("checkou"));
-        assert!(!p.matches("not-checkout-x"));
+        assert!(matches("checkout-*", "checkout-foo"));
+        assert!(matches("checkout-*", "checkout-"));
+        assert!(matches("checkout-*", "checkout-bar-baz"));
+        assert!(!matches("checkout-*", "checkou"));
+        assert!(!matches("checkout-*", "not-checkout-x"));
     }
 
     #[test]
     fn pattern_suffix_wildcard() {
-        let p = CompiledPattern::compile("*-targeting");
-        assert!(p.matches("survey-targeting"));
-        assert!(p.matches("-targeting"));
-        assert!(!p.matches("targeting-other"));
+        assert!(matches("*-targeting", "survey-targeting"));
+        assert!(matches("*-targeting", "-targeting"));
+        assert!(!matches("*-targeting", "targeting-other"));
     }
 
     #[test]
     fn pattern_middle_wildcard() {
-        let p = CompiledPattern::compile("survey-*-targeting");
-        assert!(p.matches("survey-abc-targeting"));
-        assert!(p.matches("survey--targeting"));
-        assert!(!p.matches("survey-abc-other"));
-        assert!(!p.matches("not-survey-abc-targeting"));
+        assert!(matches("survey-*-targeting", "survey-abc-targeting"));
+        assert!(matches("survey-*-targeting", "survey--targeting"));
+        assert!(!matches("survey-*-targeting", "survey-abc-other"));
+        assert!(!matches("survey-*-targeting", "not-survey-abc-targeting"));
     }
 
     #[test]
     fn pattern_match_all() {
-        let p = CompiledPattern::compile("*");
-        assert!(p.matches(""));
-        assert!(p.matches("anything"));
-        assert!(p.matches("with-dashes-123"));
+        assert!(matches("*", ""));
+        assert!(matches("*", "anything"));
+        assert!(matches("*", "with-dashes-123"));
     }
 
     #[test]
@@ -456,7 +423,7 @@ mod tests {
         let logger = BodyLogger::new(BodyLogTeams(map), 65_536);
         let p = logger.for_team(42).expect("expected entry for team 42");
         assert!(p.is_filter_active());
-        assert_eq!(p.raw, vec!["my-feature", "checkout-*"]);
+        assert_eq!(p.raw_joined, "my-feature,checkout-*");
         assert!(p.matches("my-feature"));
         assert!(p.matches("checkout-foo"));
         assert!(!p.matches("other-flag"));
@@ -558,5 +525,19 @@ mod tests {
         assert!(logger.is_stale(60));
         let _ = logger.claim_refresh(60);
         assert!(!logger.is_stale(60));
+    }
+
+    #[test]
+    fn update_skips_recompile_when_unchanged() {
+        let mut map = HashMap::new();
+        map.insert(42, vec!["foo".into()]);
+        let logger = BodyLogger::new(BodyLogTeams(map.clone()), 65_536);
+        let before = Arc::as_ptr(&logger.for_team(42).unwrap());
+        logger.update(BodyLogTeams(map));
+        let after = Arc::as_ptr(&logger.for_team(42).unwrap());
+        assert_eq!(
+            before, after,
+            "Arc identity preserved when config unchanged"
+        );
     }
 }

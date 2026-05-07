@@ -2,19 +2,15 @@
 //!
 //! Verifies that a row written to `posthog_instancesetting` under
 //! `constance:posthog:FLAGS_LOG_BODIES_TEAMS` propagates into the Rust
-//! service's in-memory config when `BodyLogger::refresh_if_stale` runs,
-//! mirroring the established `RATE_LIMITING_ALLOW_LIST_TEAMS` pattern.
+//! service's in-memory config when `BodyLogger::refresh_if_stale` runs.
 //!
 //! All scenarios share one combined test so they don't race on the same
-//! `posthog_instancesetting` row when cargo runs integration tests in
-//! parallel — same approach as `test_db_rate_limit_allowlist`.
+//! `posthog_instancesetting` row when cargo runs integration tests in parallel.
 
 use feature_flags::config::{BodyLogTeams, Config};
-use feature_flags::handler::body_logger::BodyLogger;
+use feature_flags::handler::body_logger::{BodyLogger, REFRESH_TTL_SECS};
 use feature_flags::utils::test_utils::TestContext;
 use sqlx::postgres::PgPoolOptions;
-
-const REFRESH_TTL_SECS: u64 = 60;
 
 fn pg_pool_from_config(config: &Config) -> sqlx::PgPool {
     PgPoolOptions::new()
