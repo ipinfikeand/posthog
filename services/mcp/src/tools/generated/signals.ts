@@ -240,16 +240,16 @@ const SignalsAgentProjectProfileGetSchema = z.object({})
 
 const signalsAgentProjectProfileGet = (): ToolBase<
     typeof SignalsAgentProjectProfileGetSchema,
-    Schemas.ProjectProfile[]
+    Schemas.ProjectProfile
 > => ({
     name: 'signals-agent-project-profile-get',
     schema: SignalsAgentProjectProfileGetSchema,
     // eslint-disable-next-line no-unused-vars
     handler: async (context: Context, params: z.infer<typeof SignalsAgentProjectProfileGetSchema>) => {
         const projectId = await context.stateManager.getProjectId()
-        const result = await context.api.request<Schemas.ProjectProfile[]>({
+        const result = await context.api.request<Schemas.ProjectProfile>({
             method: 'GET',
-            path: `/api/projects/${encodeURIComponent(String(projectId))}/signals/agent/project_profile/`,
+            path: `/api/projects/${encodeURIComponent(String(projectId))}/signals/agent/project_profile/current/`,
         })
         return result
     },

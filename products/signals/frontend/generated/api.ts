@@ -130,14 +130,14 @@ export const signalsAgentMemoryDelete = async (
  * @summary Get the current project profile
  */
 export const getSignalsAgentProjectProfileGetUrl = (projectId: string) => {
-    return `/api/projects/${projectId}/signals/agent/project_profile/`
+    return `/api/projects/${projectId}/signals/agent/project_profile/current/`
 }
 
 export const signalsAgentProjectProfileGet = async (
     projectId: string,
     options?: RequestInit
-): Promise<ProjectProfileApi[]> => {
-    return apiMutator<ProjectProfileApi[]>(getSignalsAgentProjectProfileGetUrl(projectId), {
+): Promise<ProjectProfileApi> => {
+    return apiMutator<ProjectProfileApi>(getSignalsAgentProjectProfileGetUrl(projectId), {
         ...options,
         method: 'GET',
     })
