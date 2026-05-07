@@ -4,6 +4,14 @@
         "id": {
             "description": "A unique integer value identifying this insight.",
             "type": "number"
+        },
+        "limit": {
+            "description": "Page size. Defaults to 10.",
+            "type": "number"
+        },
+        "page": {
+            "description": "1-indexed page number. Defaults to 1.",
+            "type": "number"
         }
     },
     "required": ["id"],
