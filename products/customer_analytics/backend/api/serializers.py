@@ -1,8 +1,38 @@
 import json
 
+from drf_spectacular.utils import extend_schema_field
+from pydantic import ValidationError as PydanticValidationError
 from rest_framework import serializers
 
-from products.customer_analytics.backend.models import CustomerJourney, CustomerProfileConfig
+from products.customer_analytics.backend.models import Account, CustomerJourney, CustomerProfileConfig
+from products.customer_analytics.backend.models.account import AccountProperties
+
+_ACCOUNT_ASSIGNMENT_SCHEMA = {
+    "type": "object",
+    "nullable": True,
+    "properties": {
+        "id": {"type": "integer"},
+        "email": {"type": "string"},
+    },
+    "required": ["id", "email"],
+}
+
+_ACCOUNT_PROPERTIES_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "group_type_index": {"type": "integer", "nullable": True},
+        "group_keys": {"type": "array", "items": {"type": "string"}},
+        "csm": _ACCOUNT_ASSIGNMENT_SCHEMA,
+        "account_executive": _ACCOUNT_ASSIGNMENT_SCHEMA,
+        "account_owner": _ACCOUNT_ASSIGNMENT_SCHEMA,
+    },
+}
+
+
+@extend_schema_field(_ACCOUNT_PROPERTIES_SCHEMA)
+class AccountPropertiesField(serializers.JSONField):
+    pass
 
 
 class CustomerProfileConfigSerializer(serializers.ModelSerializer):
@@ -84,3 +114,106 @@ class CustomerJourneySerializer(serializers.ModelSerializer):
             return super().create(validated_data)
         except IntegrityError:
             raise Conflict("A customer journey already exists for this insight.")
+
+
+class AccountSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(
+        max_length=400,
+        help_text="Human-readable name of the account.",
+    )
+    external_id = serializers.CharField(
+        max_length=400,
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text="Identifier for the account in an external system (e.g. CRM ID). Optional.",
+    )
+    properties = AccountPropertiesField(
+        source="_properties",
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Typed account properties: group_type_index, group_keys, and assignment fields "
+            "(csm, account_executive, account_owner). Defaults to an empty object. "
+            "Unknown keys are rejected."
+        ),
+    )
+
+    class Meta:
+        model = Account
+        fields = [
+            "id",
+            "name",
+            "external_id",
+            "properties",
+            "created_at",
+            "created_by",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "created_by",
+            "updated_at",
+        ]
+
+    def validate_properties(self, value):
+        if value is None:
+            return {}
+
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("properties must be a JSON object.")
+
+        try:
+            json.dumps(value)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("properties must be JSON-serializable.")
+
+        try:
+            AccountProperties.model_validate(value)
+        except PydanticValidationError as exc:
+            raise serializers.ValidationError(_format_pydantic_errors(exc))
+
+        group_keys = value.get("group_keys")
+        if isinstance(group_keys, list) and len(group_keys) > 1:
+            deduped = list(dict.fromkeys(group_keys))
+            if deduped != group_keys:
+                value = {**value, "group_keys": deduped}
+
+        return value
+
+    def validate(self, attrs):
+        new_properties = attrs.get("_properties")
+        if new_properties is None:
+            return super().validate(attrs)
+
+        group_keys = new_properties.get("group_keys") or []
+        if not group_keys:
+            return super().validate(attrs)
+
+        team_id = self.context["team_id"]
+        exclude_pk = self.instance.pk if self.instance is not None else None
+        conflicts = sorted(
+            key
+            for key in group_keys
+            if Account.objects.get_sibling_accounts(team_id=team_id, group_key=key, exclude_pk=exclude_pk).exists()
+        )
+        if conflicts:
+            raise serializers.ValidationError(
+                {"properties": f"group_keys already attached to a different account: {conflicts}"}
+            )
+
+        return super().validate(attrs)
+
+    def create(self, validated_data):
+        validated_data["created_by"] = self.context["request"].user
+        validated_data["team_id"] = self.context["team_id"]
+        return super().create(validated_data)
+
+
+def _format_pydantic_errors(exc: PydanticValidationError) -> list[str]:
+    messages = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err["loc"])
+        messages.append(f"{loc}: {err['msg']}" if loc else err["msg"])
+    return messages

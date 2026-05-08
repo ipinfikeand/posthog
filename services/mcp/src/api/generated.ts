@@ -44,6 +44,56 @@ export namespace Schemas {
     } as const;
 
     /**
+     * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+     * @nullable
+     */
+    export type AccountProperties = {
+      /** @nullable */
+      group_type_index?: number | null;
+      group_keys?: string[];
+      /** @nullable */
+      csm?: {
+      id: number;
+      email: string;
+    } | null | null;
+      /** @nullable */
+      account_executive?: {
+      id: number;
+      email: string;
+    } | null | null;
+      /** @nullable */
+      account_owner?: {
+      id: number;
+      email: string;
+    } | null | null;
+    } | null | null;
+
+    export interface Account {
+      readonly id: string;
+      /**
+       * Human-readable name of the account.
+       * @maxLength 400
+       */
+      name: string;
+      /**
+       * Identifier for the account in an external system (e.g. CRM ID). Optional.
+       * @maxLength 400
+       * @nullable
+       */
+      external_id?: string | null;
+      /**
+       * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+       * @nullable
+       */
+      properties?: AccountProperties;
+      readonly created_at: string;
+      /** @nullable */
+      readonly created_by: number | null;
+      /** @nullable */
+      readonly updated_at: string | null;
+    }
+
+    /**
      * * `event` - event
     * `event_metadata` - event_metadata
     * `feature` - feature
@@ -20447,6 +20497,15 @@ export namespace Schemas {
       NeedsAttention: 'needs_attention',
     } as const;
 
+    export interface PaginatedAccountList {
+      count: number;
+      /** @nullable */
+      next?: string | null;
+      /** @nullable */
+      previous?: string | null;
+      results: Account[];
+    }
+
     export interface PaginatedActionList {
       count: number;
       /** @nullable */
@@ -23997,6 +24056,56 @@ export namespace Schemas {
       /** @nullable */
       previous?: string | null;
       results: WebExperimentsAPI[];
+    }
+
+    /**
+     * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+     * @nullable
+     */
+    export type PatchedAccountProperties = {
+      /** @nullable */
+      group_type_index?: number | null;
+      group_keys?: string[];
+      /** @nullable */
+      csm?: {
+      id: number;
+      email: string;
+    } | null | null;
+      /** @nullable */
+      account_executive?: {
+      id: number;
+      email: string;
+    } | null | null;
+      /** @nullable */
+      account_owner?: {
+      id: number;
+      email: string;
+    } | null | null;
+    } | null | null;
+
+    export interface PatchedAccount {
+      readonly id?: string;
+      /**
+       * Human-readable name of the account.
+       * @maxLength 400
+       */
+      name?: string;
+      /**
+       * Identifier for the account in an external system (e.g. CRM ID). Optional.
+       * @maxLength 400
+       * @nullable
+       */
+      external_id?: string | null;
+      /**
+       * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+       * @nullable
+       */
+      properties?: PatchedAccountProperties;
+      readonly created_at?: string;
+      /** @nullable */
+      readonly created_by?: number | null;
+      /** @nullable */
+      readonly updated_at?: string | null;
     }
 
     /**
@@ -37462,6 +37571,17 @@ export namespace Schemas {
      * A search term.
      */
     search?: string;
+    };
+
+    export type AccountsListParams = {
+    /**
+     * Number of results to return per page.
+     */
+    limit?: number;
+    /**
+     * The initial index from which to return the results.
+     */
+    offset?: number;
     };
 
     export type ApprovalPoliciesListParams = {

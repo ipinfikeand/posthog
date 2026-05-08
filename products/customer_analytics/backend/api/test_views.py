@@ -11,7 +11,7 @@ from posthog.models.organization import OrganizationMembership
 from posthog.models.team import Team
 from posthog.models.user import User
 
-from products.customer_analytics.backend.models import CustomerJourney, CustomerProfileConfig
+from products.customer_analytics.backend.models import Account, CustomerJourney, CustomerProfileConfig
 
 
 class TestCustomerProfileConfigViewSet(APIBaseTest):
@@ -385,9 +385,294 @@ class TestCustomerJourneyViewSet(APIBaseTest):
                 self.assertEqual(expected_status_code, response.status_code)
 
 
+class TestAccountViewSet(APIBaseTest):
+    def setUp(self):
+        super().setUp()
+        self.endpoint_base = f"/api/environments/{self.team.id}/accounts/"
+
+    def _create_account(self, **kwargs):
+        defaults = {"team": self.team, "name": "Acme Corp"}
+        defaults.update(kwargs)
+        return Account.objects.create(**defaults)
+
+    def test_create(self):
+        response = self.client.post(
+            self.endpoint_base,
+            {
+                "name": "Acme Corp",
+                "external_id": "acme-123",
+                "properties": {"group_type_index": 0, "group_keys": ["acme-corp"]},
+            },
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_201_CREATED, response.status_code, response.json())
+        data = response.json()
+        self.assertIn("id", data)
+        self.assertEqual(data["name"], "Acme Corp")
+        self.assertEqual(data["external_id"], "acme-123")
+        self.assertEqual(data["properties"]["group_type_index"], 0)
+        self.assertEqual(data["properties"]["group_keys"], ["acme-corp"])
+        self.assertIn("created_at", data)
+        self.assertIn("updated_at", data)
+
+        account = Account.objects.get(id=data["id"])  # nosemgrep: semgrep.rules.idor-lookup-without-team
+        self.assertEqual(account.created_by, self.user)
+        self.assertEqual(account.team, self.team)
+        self.assertEqual(account.properties.group_type_index, 0)
+        self.assertEqual(account.properties.group_keys, ["acme-corp"])
+
+    def test_create_minimal_payload_uses_defaults(self):
+        response = self.client.post(self.endpoint_base, {"name": "Bare Account"}, format="json")
+
+        self.assertEqual(status.HTTP_201_CREATED, response.status_code, response.json())
+        data = response.json()
+        self.assertEqual(data["name"], "Bare Account")
+        self.assertIsNone(data["external_id"])
+        self.assertEqual(data["properties"], {})
+
+    def test_list(self):
+        a1 = self._create_account(name="Account 1")
+        a2 = self._create_account(name="Account 2")
+
+        other_team = Team.objects.create(organization=self.organization)
+        Account.objects.create(team=other_team, name="Other Team Account")
+
+        response = self.client.get(self.endpoint_base)
+
+        self.assertEqual(status.HTTP_200_OK, response.status_code)
+        data = response.json()
+        self.assertEqual(data["count"], 2)
+        ids = {r["id"] for r in data["results"]}
+        self.assertEqual(ids, {str(a1.id), str(a2.id)})
+
+    def test_retrieve(self):
+        account = self._create_account(
+            external_id="ext-1",
+            properties={"group_type_index": 0, "group_keys": ["acme"]},
+        )
+
+        response = self.client.get(f"{self.endpoint_base}{account.id}/")
+
+        self.assertEqual(status.HTTP_200_OK, response.status_code)
+        data = response.json()
+        self.assertEqual(data["id"], str(account.id))
+        self.assertEqual(data["name"], "Acme Corp")
+        self.assertEqual(data["external_id"], "ext-1")
+        self.assertEqual(data["properties"]["group_type_index"], 0)
+        self.assertEqual(data["properties"]["group_keys"], ["acme"])
+
+    def test_update(self):
+        account = self._create_account(properties={"group_type_index": 0, "group_keys": ["acme"]})
+
+        response = self.client.patch(
+            f"{self.endpoint_base}{account.id}/",
+            {"name": "Renamed", "properties": {"group_type_index": 0, "group_keys": ["acme", "acme-2"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_200_OK, response.status_code)
+        account.refresh_from_db()
+        self.assertEqual(account.name, "Renamed")
+        self.assertEqual(account.properties.group_keys, ["acme", "acme-2"])
+
+    def test_delete(self):
+        account = self._create_account()
+        account_id = account.id
+
+        response = self.client.delete(f"{self.endpoint_base}{account.id}/")
+
+        self.assertEqual(status.HTTP_204_NO_CONTENT, response.status_code)
+        self.assertFalse(
+            Account.objects.filter(id=account_id).exists()  # nosemgrep: semgrep.rules.idor-lookup-without-team
+        )
+
+    @parameterized.expand(
+        [
+            (
+                "create",
+                lambda self: self.client.post(self.endpoint_base, {"name": "Logged"}, format="json"),
+                "created",
+            ),
+            (
+                "update",
+                lambda self: self.client.patch(
+                    f"{self.endpoint_base}{self._create_account().id}/",
+                    {"name": "Renamed"},
+                    format="json",
+                ),
+                "updated",
+            ),
+            (
+                "delete",
+                lambda self: self.client.delete(f"{self.endpoint_base}{self._create_account().id}/"),
+                "deleted",
+            ),
+        ]
+    )
+    def test_activity_log(self, _name, perform_action, expected_activity):
+        perform_action(self)
+
+        logs = ActivityLog.objects.filter(team_id=self.team.id, scope="Account", activity=expected_activity)
+        self.assertEqual(logs.count(), 1)
+
+    def test_team_isolation(self):
+        other_team = Team.objects.create(organization=self.organization)
+        other_account = Account.objects.create(team=other_team, name="Other")
+
+        response = self.client.get(f"{self.endpoint_base}{other_account.id}/")
+        self.assertEqual(status.HTTP_404_NOT_FOUND, response.status_code)
+
+        response = self.client.patch(f"{self.endpoint_base}{other_account.id}/", {"name": "Hijacked"}, format="json")
+        self.assertEqual(status.HTTP_404_NOT_FOUND, response.status_code)
+
+        response = self.client.delete(f"{self.endpoint_base}{other_account.id}/")
+        self.assertEqual(status.HTTP_404_NOT_FOUND, response.status_code)
+
+    @parameterized.expand(
+        [
+            ("missing_name", {}, "name"),
+            ("name_too_long", {"name": "x" * 401}, "name"),
+            ("properties_not_object", {"name": "Acme", "properties": [1, 2, 3]}, "properties"),
+            ("properties_not_object_string", {"name": "Acme", "properties": "not-a-dict"}, "properties"),
+            (
+                "properties_unknown_key",
+                {"name": "Acme", "properties": {"unknown_field": "x"}},
+                "properties",
+            ),
+            (
+                "properties_keys_without_type",
+                {"name": "Acme", "properties": {"group_keys": ["acme"]}},
+                "properties",
+            ),
+            (
+                "properties_wrong_field_type",
+                {"name": "Acme", "properties": {"group_type_index": "not-an-int"}},
+                "properties",
+            ),
+        ]
+    )
+    def test_validation_errors(self, _name, invalid_data, expected_error_field):
+        response = self.client.post(self.endpoint_base, invalid_data, format="json")
+
+        self.assertEqual(status.HTTP_400_BAD_REQUEST, response.status_code)
+        data = response.json()
+        self.assertEqual(data["attr"], expected_error_field)
+        self.assertEqual(data["type"], "validation_error")
+
+    def test_properties_default_when_null(self):
+        response = self.client.post(self.endpoint_base, {"name": "Acme", "properties": None}, format="json")
+
+        self.assertEqual(status.HTTP_201_CREATED, response.status_code)
+        self.assertEqual({}, response.json()["properties"])
+
+    def test_create_rejects_duplicate_group_key_within_team(self):
+        first = self.client.post(
+            self.endpoint_base,
+            {"name": "First", "properties": {"group_type_index": 0, "group_keys": ["acme"]}},
+            format="json",
+        )
+        self.assertEqual(status.HTTP_201_CREATED, first.status_code, first.json())
+
+        second = self.client.post(
+            self.endpoint_base,
+            {"name": "Second", "properties": {"group_type_index": 0, "group_keys": ["acme"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_400_BAD_REQUEST, second.status_code, second.json())
+        body = second.json()
+        self.assertEqual(body["attr"], "properties")
+        self.assertIn("acme", body["detail"])
+        self.assertEqual(
+            1,
+            Account.objects.filter(team_id=self.team.id, name__in=["First", "Second"]).count(),
+            "Second create must not have persisted an account",
+        )
+
+    def test_create_dedupes_duplicate_group_keys_in_same_payload(self):
+        response = self.client.post(
+            self.endpoint_base,
+            {"name": "Acme", "properties": {"group_type_index": 0, "group_keys": ["acme", "beta", "acme"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_201_CREATED, response.status_code, response.json())
+        self.assertEqual(response.json()["properties"]["group_keys"], ["acme", "beta"])
+        account = Account.objects.get(id=response.json()["id"])  # nosemgrep: semgrep.rules.idor-lookup-without-team
+        self.assertEqual(account.properties.group_keys, ["acme", "beta"])
+
+    def test_create_allows_same_group_key_across_teams(self):
+        other_team = Team.objects.create(organization=self.organization)
+        Account.objects.create(
+            team=other_team,
+            name="Other Team Acme",
+            properties={"group_type_index": 0, "group_keys": ["acme"]},
+        )
+
+        response = self.client.post(
+            self.endpoint_base,
+            {"name": "Acme", "properties": {"group_type_index": 0, "group_keys": ["acme"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_201_CREATED, response.status_code, response.json())
+
+    def test_partial_update_rejects_taking_group_key_from_another_account(self):
+        first = self._create_account(
+            name="First",
+            properties={"group_type_index": 0, "group_keys": ["acme"]},
+        )
+        second = self._create_account(
+            name="Second",
+            properties={"group_type_index": 0, "group_keys": ["beta"]},
+        )
+
+        response = self.client.patch(
+            f"{self.endpoint_base}{second.id}/",
+            {"properties": {"group_type_index": 0, "group_keys": ["acme"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_400_BAD_REQUEST, response.status_code, response.json())
+        self.assertEqual(response.json()["attr"], "properties")
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.properties.group_keys, ["acme"])
+        self.assertEqual(second.properties.group_keys, ["beta"])
+
+    def test_partial_update_keeping_existing_keys_is_idempotent(self):
+        account = self._create_account(properties={"group_type_index": 0, "group_keys": ["acme"]})
+
+        response = self.client.patch(
+            f"{self.endpoint_base}{account.id}/",
+            {"name": "Renamed", "properties": {"group_type_index": 0, "group_keys": ["acme"]}},
+            format="json",
+        )
+
+        self.assertEqual(status.HTTP_200_OK, response.status_code, response.json())
+        account.refresh_from_db()
+        self.assertEqual(account.name, "Renamed")
+        self.assertEqual(account.properties.group_keys, ["acme"])
+
+    def test_authentication_required(self):
+        self.client.logout()
+
+        for method, url in [
+            ("GET", self.endpoint_base),
+            ("POST", self.endpoint_base),
+            ("GET", f"{self.endpoint_base}test-id/"),
+            ("PATCH", f"{self.endpoint_base}test-id/"),
+            ("DELETE", f"{self.endpoint_base}test-id/"),
+        ]:
+            with self.subTest(method=method, url=url):
+                response = getattr(self.client, method.lower())(url, format="json")
+                self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+
 @pytest.mark.ee
 class TestCustomerAnalyticsAccessControl(APIBaseTest):
-    """Resource-level access control tests for customer journeys.
+    """Resource-level access control tests for customer journeys and accounts.
 
     Note: CustomerProfileConfig is a settings resource and uses project-level
     admin permissions, not resource-level RBAC. See TestCustomerProfileConfigViewSet
@@ -421,6 +706,9 @@ class TestCustomerAnalyticsAccessControl(APIBaseTest):
         )
 
         self.journeys_url = f"/api/environments/{self.team.id}/customer_journeys/"
+
+        self.account = Account.objects.create(team=self.team, name="ACL Account")
+        self.accounts_url = f"/api/environments/{self.team.id}/accounts/"
 
     def _set_access_level(self, user: User, resource: str = "customer_analytics", access_level: str = "viewer") -> None:
         try:
@@ -585,3 +873,33 @@ class TestCustomerAnalyticsAccessControl(APIBaseTest):
 
         response = self.client.delete(f"{self.journeys_url}{self.journey.id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    # -- Resource inheritance: customer_analytics access cascades to accounts --
+
+    def test_customer_analytics_viewer_can_list_accounts(self):
+        self._set_access_level(self.viewer_user, resource="customer_analytics", access_level="viewer")
+        self.client.force_login(self.viewer_user)
+
+        response = self.client.get(self.accounts_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_customer_analytics_viewer_cannot_create_account(self):
+        self._set_access_level(self.viewer_user, resource="customer_analytics", access_level="viewer")
+        self.client.force_login(self.viewer_user)
+
+        response = self.client.post(self.accounts_url, {"name": "Should Fail"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_customer_analytics_editor_can_create_account(self):
+        self._set_access_level(self.editor_user, resource="customer_analytics", access_level="editor")
+        self.client.force_login(self.editor_user)
+
+        response = self.client.post(self.accounts_url, {"name": "Inherited Account"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_customer_analytics_none_blocks_account_list(self):
+        self._set_access_level(self.no_access_user, resource="customer_analytics", access_level="none")
+        self.client.force_login(self.no_access_user)
+
+        response = self.client.get(self.accounts_url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
