@@ -7,7 +7,9 @@ from posthog.models.dmat_slot_assignments.sql import (
 )
 from posthog.models.event.sql import (
     ALTER_TABLE_ADD_DMAT_STRING_COLUMNS,
+    DROP_EVENTS_JSON_MV_SQL,
     DROP_EVENTS_JSON_WS_MV_SQL,
+    DROP_KAFKA_EVENTS_JSON_TABLE_SQL,
     DROP_KAFKA_EVENTS_JSON_WS_TABLE_SQL,
     EVENTS_DATA_TABLE,
     EVENTS_TABLE_JSON_MV_SQL,
@@ -15,7 +17,6 @@ from posthog.models.event.sql import (
     KAFKA_EVENTS_TABLE_JSON_SQL,
     KAFKA_EVENTS_TABLE_JSON_WS_SQL,
 )
-from posthog.settings import CLICKHOUSE_CLUSTER
 
 # Two interlocking schema changes:
 #
@@ -63,10 +64,12 @@ def _alter_drop_typed(table: str) -> str:
 
 # Step 1: drop the MVs and the kafka tables that feed into the data tables.
 # Doing this first prevents a brief double-write window during the schema transition.
+# kafka_events_json and events_json_mv are not replicated — they live independently on
+# each DATA host — so we run the DROP per-host (no ON CLUSTER, per migration conventions).
 operations = [
     # MSK path (legacy, present everywhere).
-    run_sql_with_exceptions(f"DROP TABLE IF EXISTS events_json_mv ON CLUSTER '{CLICKHOUSE_CLUSTER}'"),
-    run_sql_with_exceptions(f"DROP TABLE IF EXISTS kafka_events_json ON CLUSTER '{CLICKHOUSE_CLUSTER}'"),
+    run_sql_with_exceptions(DROP_EVENTS_JSON_MV_SQL, node_roles=[NodeRole.DATA]),
+    run_sql_with_exceptions(DROP_KAFKA_EVENTS_JSON_TABLE_SQL, node_roles=[NodeRole.DATA]),
 ]
 
 if _is_cloud:
@@ -116,6 +119,8 @@ operations += [
     # writable_events on DATA nodes — required on every install so the MSK MV recreate below
     # can project dmat_string_10..99 into it. Without this, self-hosted installs (which have
     # no INGESTION_EVENTS path at all) would fail at the MV recreate step.
+    # writable_events is a Distributed engine table (not sharded, not replicated), so neither
+    # flag applies — explicit False is required to satisfy the migration convention check.
     run_sql_with_exceptions(
         ALTER_TABLE_ADD_DMAT_STRING_COLUMNS(
             table="writable_events",
@@ -123,6 +128,8 @@ operations += [
             end_exclusive=_NEW_STRING_RANGE_END,
         ),
         node_roles=[NodeRole.DATA],
+        sharded=False,
+        is_alter_on_replicated_table=False,
     ),
 ]
 
@@ -136,6 +143,8 @@ if _is_cloud:
                 end_exclusive=_NEW_STRING_RANGE_END,
             ),
             node_roles=[NodeRole.INGESTION_EVENTS],
+            sharded=False,
+            is_alter_on_replicated_table=False,
         ),
     ]
 
@@ -164,6 +173,8 @@ if _is_cloud:
         run_sql_with_exceptions(
             _alter_drop_typed("writable_events"),
             node_roles=[NodeRole.INGESTION_EVENTS],
+            sharded=False,
+            is_alter_on_replicated_table=False,
         ),
     ]
 
@@ -171,10 +182,18 @@ if _is_cloud:
 # `KAFKA_EVENTS_TABLE_JSON_SQL()` and friends call EVENTS_TABLE_BASE_SQL which embeds
 # `EVENTS_TABLE_DYNAMICALLY_MATERIALIZED_COLUMNS()` — now string-only — so the recreated
 # tables include the expanded 100-column dmat_string range and nothing else.
+# We pass on_cluster=False and run on DATA nodes per-host (the migration framework fans
+# the query out via map_hosts_by_roles), per the no-ON-CLUSTER convention.
 operations += [
     # MSK path
-    run_sql_with_exceptions(KAFKA_EVENTS_TABLE_JSON_SQL()),
-    run_sql_with_exceptions(EVENTS_TABLE_JSON_MV_SQL()),
+    run_sql_with_exceptions(
+        KAFKA_EVENTS_TABLE_JSON_SQL(on_cluster=False),
+        node_roles=[NodeRole.DATA],
+    ),
+    run_sql_with_exceptions(
+        EVENTS_TABLE_JSON_MV_SQL(on_cluster=False),
+        node_roles=[NodeRole.DATA],
+    ),
 ]
 
 if _is_cloud:
