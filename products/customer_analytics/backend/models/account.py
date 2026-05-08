@@ -136,6 +136,10 @@ def _enforce_account_group_type_index_drift_policy(sender, instance, **kwargs) -
     if instance.pk is None:
         return
 
+    update_fields = kwargs.get("update_fields")
+    if update_fields and "account_group_type_index" not in update_fields:
+        return
+
     previous = sender.objects.filter(pk=instance.pk).values_list("account_group_type_index", flat=True).first()
     if previous == instance.account_group_type_index:
         return
