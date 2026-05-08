@@ -37,14 +37,13 @@ Drift modes that *will* fail loudly:
 
 Notes on dtypes:
 
-    * Rates / ratios / stats are CH `Float64` divided by counts, returned
-      as Python `float`. ClickHouse's `nullIf` produces NULL on zero
+    * Rates / ratios / shares / stats are CH `Float64` divided by counts,
+      returned as Python `float`. ClickHouse's `nullIf` produces NULL on zero
       denominators; pandas surfaces this as `NaN`, which XGBoost handles
       natively. Validation accepts NaN (but not +/-inf — that's a feature
       engineering bug).
-    * Pass-through counts (`*_path_visit_count`, `unique_urls`,
-      `viewport_resize_count`, `selection_copy_count`, `long_idle_gap_count`,
-      `page_revisit_count`) come back as Python `int`. Pandas will infer
+    * Pass-through counts (`viewport_resize_count`, `selection_copy_count`,
+      `unique_form_fields`) come back as Python `int`. Pandas will infer
       either int64 or float64 depending on whether the chunk has any NULLs.
       Validation accepts both kinds for these columns.
 """
@@ -59,7 +58,7 @@ import pandas as pd
 
 # Bump on every breaking feature-set change. Logged per chunk so distribution
 # shifts can be correlated with deploys.
-MODEL_FEATURE_SCHEMA_VERSION = 1
+MODEL_FEATURE_SCHEMA_VERSION = 2
 
 # Columns that identify the row but are NOT model features. Stripped before
 # predict; re-attached for the INSERT.
@@ -137,9 +136,34 @@ FEATURE_RANGES: dict[str, FeatureSpec] = {
     "network_request_duration_mean_ms": _NONNEG_FLOAT,
     "network_request_duration_stddev_ms": _NONNEG_FLOAT,
     "network_failure_ratio": _RATIO,
-    "unique_urls": _NONNEG_COUNT,
-    "unique_click_targets": _NONNEG_COUNT,
-    "page_revisit_count": _NONNEG_COUNT,
+    "network_4xx_ratio": _RATIO,
+    "network_5xx_ratio": _RATIO,
+    "scroll_to_top_rate": _RATE,
+    "backspace_ratio": _RATIO,
+    "long_idle_gap_share": _RATIO,
+    "console_warn_rate": _RATE,
+    "mutation_rate": _RATE,
+    "viewport_resize_count": _NONNEG_COUNT,
+    "touch_event_rate": _RATE,
+    "selection_copy_count": _NONNEG_COUNT,
+    "login_path_visit_share": _RATIO,
+    "signup_path_visit_share": _RATIO,
+    "checkout_path_visit_share": _RATIO,
+    "cart_path_visit_share": _RATIO,
+    "billing_path_visit_share": _RATIO,
+    "settings_path_visit_share": _RATIO,
+    "account_path_visit_share": _RATIO,
+    "error_path_visit_share": _RATIO,
+    "not_found_path_visit_share": _RATIO,
+    "admin_path_visit_share": _RATIO,
+    "dashboard_path_visit_share": _RATIO,
+    "onboarding_path_visit_share": _RATIO,
+    "cancel_path_visit_share": _RATIO,
+    "refund_path_visit_share": _RATIO,
+    "unique_url_share": _RATIO,
+    "click_target_share": _RATIO,
+    "unique_form_fields": _NONNEG_COUNT,
+    "page_revisit_share": _RATIO,
 }
 
 

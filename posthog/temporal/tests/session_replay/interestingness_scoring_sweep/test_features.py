@@ -91,9 +91,9 @@ class TestValidateFeaturesRanges:
         [
             ("event_rate", -0.5),
             ("network_failure_ratio", 1.5),
-            ("page_revisit_count", -3),
+            ("page_revisit_share", 1.5),
             ("mouse_stddev_x", -1.0),
-            ("unique_urls", -1),
+            ("selection_copy_count", -1),
         ],
     )
     def test_out_of_range_value_raises(
@@ -146,14 +146,14 @@ class TestValidateFeaturesDtypes:
         # Count columns can come back as int64 (no NULLs) or float64 (some NULLs)
         # depending on what's in the chunk — both must pass.
         df = feature_frame.copy()
-        df["page_revisit_count"] = df["page_revisit_count"].astype(np.int64)
+        df["selection_copy_count"] = df["selection_copy_count"].astype(np.int64)
         validate_features(df, feature_names=feature_names_for_tests)
 
     def test_float_dtype_accepted_for_count_column(
         self, feature_frame: pd.DataFrame, feature_names_for_tests: tuple[str, ...]
     ) -> None:
         df = feature_frame.copy()
-        df["page_revisit_count"] = df["page_revisit_count"].astype(np.float64)
+        df["selection_copy_count"] = df["selection_copy_count"].astype(np.float64)
         validate_features(df, feature_names=feature_names_for_tests)
 
 

@@ -69,8 +69,23 @@ SESSION_REPLAY_FEATURES_TABLE = "session_replay_features"
 # --------------------------------------------------------------------------- #
 # Aggregate fragment over `session_replay_features`.                           #
 # Identical column-by-column to the training query's CTE.                      #
-# Only references columns that exist on the live `session_replay_features`     #
-# DDL today (see posthog/session_recordings/sql/session_replay_feature_sql.py).#
+#                                                                              #
+# Schema gap: the columns below NOT yet on the live `session_replay_features`  #
+# DDL (`posthog/session_recordings/sql/session_replay_feature_sql.py`):        #
+# `scroll_to_top_count`, `backspace_count`, `long_idle_gap_count`,             #
+# `console_warn_count`, `network_4xx_count`, `network_5xx_count`,              #
+# `mutation_count`, `viewport_resize_count`, `touch_event_count`,              #
+# `selection_copy_count`, every `*_path_visit_count`, and                      #
+# `unique_form_field_count`. They land via the replay-features ALTER + Kafka   #
+# MV update — until that ships, this query will fail with `Unknown identifier` #
+# for those columns. Tracked alongside the retrain in the open follow-ups.    #
+#                                                                              #
+# `uniqCombinedMerge(12)` requires the underlying state to be                  #
+# `AggregateFunction(uniqCombined(12), ...)` — the live DDL still uses         #
+# `AggregateFunction(uniqExact, ...)`. Switching the merge function without    #
+# migrating the state type produces a wire-format error at query time. Either  #
+# the DDL migrates to `uniqCombined(12)` (training query intent) or the merge  #
+# here needs to be `uniqExactMerge` to match what's actually stored.           #
 # --------------------------------------------------------------------------- #
 _AGGREGATED_STATS_FRAGMENT = """
 SELECT
@@ -112,8 +127,33 @@ SELECT
     sum(f.network_request_duration_sum)             AS network_request_duration_sum,
     sum(f.network_request_duration_sum_of_squares)  AS network_request_duration_sum_of_squares,
     sum(f.network_request_duration_count)           AS network_request_duration_count,
-    uniqExactMerge(f.unique_url_count)              AS unique_urls,
-    uniqExactMerge(f.unique_click_target_count)     AS unique_click_targets
+    sum(f.scroll_to_top_count)                      AS scroll_to_top_count,
+    sum(f.backspace_count)                          AS backspace_count,
+    sum(f.long_idle_gap_count)                      AS long_idle_gap_count,
+    sum(f.console_warn_count)                       AS console_warn_count,
+    sum(f.network_4xx_count)                        AS network_4xx_count,
+    sum(f.network_5xx_count)                        AS network_5xx_count,
+    sum(f.mutation_count)                           AS mutation_count,
+    sum(f.viewport_resize_count)                    AS viewport_resize_count,
+    sum(f.touch_event_count)                        AS touch_event_count,
+    sum(f.selection_copy_count)                     AS selection_copy_count,
+    sum(f.login_path_visit_count)                   AS login_path_visit_count,
+    sum(f.signup_path_visit_count)                  AS signup_path_visit_count,
+    sum(f.checkout_path_visit_count)                AS checkout_path_visit_count,
+    sum(f.cart_path_visit_count)                    AS cart_path_visit_count,
+    sum(f.billing_path_visit_count)                 AS billing_path_visit_count,
+    sum(f.settings_path_visit_count)                AS settings_path_visit_count,
+    sum(f.account_path_visit_count)                 AS account_path_visit_count,
+    sum(f.error_path_visit_count)                   AS error_path_visit_count,
+    sum(f.not_found_path_visit_count)               AS not_found_path_visit_count,
+    sum(f.admin_path_visit_count)                   AS admin_path_visit_count,
+    sum(f.dashboard_path_visit_count)               AS dashboard_path_visit_count,
+    sum(f.onboarding_path_visit_count)              AS onboarding_path_visit_count,
+    sum(f.cancel_path_visit_count)                  AS cancel_path_visit_count,
+    sum(f.refund_path_visit_count)                  AS refund_path_visit_count,
+    uniqCombinedMerge(12)(f.unique_url_count)          AS unique_urls,
+    uniqCombinedMerge(12)(f.unique_click_target_count) AS unique_click_targets,
+    uniqCombinedMerge(12)(f.unique_form_field_count)   AS unique_form_fields
 FROM {features_table} AS f
 WHERE (f.team_id, f.session_id) GLOBAL IN (SELECT team_id, session_id_str FROM eligible_sessions)
   AND f.min_first_timestamp >= now() - toIntervalDay(%(lookback_days)s)
@@ -167,9 +207,34 @@ SELECT
     sqrt(greatest(0, f.network_request_duration_sum_of_squares / nullIf(f.network_request_duration_count, 0)
                   - pow(f.network_request_duration_sum     / nullIf(f.network_request_duration_count, 0), 2))) AS network_request_duration_stddev_ms,
     f.network_failed_request_count / nullIf(f.network_request_count, 0)          AS network_failure_ratio,
-    f.unique_urls,
-    f.unique_click_targets,
-    greatest(0, f.page_visit_count - f.unique_urls) AS page_revisit_count
+    f.network_4xx_count            / nullIf(f.network_request_count, 0)          AS network_4xx_ratio,
+    f.network_5xx_count            / nullIf(f.network_request_count, 0)          AS network_5xx_ratio,
+    f.scroll_to_top_count          / nullIf(f.session_duration_s, 0)             AS scroll_to_top_rate,
+    f.backspace_count              / nullIf(f.keypress_count, 0)                 AS backspace_ratio,
+    f.long_idle_gap_count          / nullIf(f.inter_action_gap_count, 0)         AS long_idle_gap_share,
+    f.console_warn_count           / nullIf(f.session_duration_s, 0)             AS console_warn_rate,
+    f.mutation_count               / nullIf(f.session_duration_s, 0)             AS mutation_rate,
+    f.viewport_resize_count,
+    f.touch_event_count            / nullIf(f.session_duration_s, 0)             AS touch_event_rate,
+    f.selection_copy_count,
+    f.login_path_visit_count       / nullIf(f.page_visit_count, 0)               AS login_path_visit_share,
+    f.signup_path_visit_count      / nullIf(f.page_visit_count, 0)               AS signup_path_visit_share,
+    f.checkout_path_visit_count    / nullIf(f.page_visit_count, 0)               AS checkout_path_visit_share,
+    f.cart_path_visit_count        / nullIf(f.page_visit_count, 0)               AS cart_path_visit_share,
+    f.billing_path_visit_count     / nullIf(f.page_visit_count, 0)               AS billing_path_visit_share,
+    f.settings_path_visit_count    / nullIf(f.page_visit_count, 0)               AS settings_path_visit_share,
+    f.account_path_visit_count     / nullIf(f.page_visit_count, 0)               AS account_path_visit_share,
+    f.error_path_visit_count       / nullIf(f.page_visit_count, 0)               AS error_path_visit_share,
+    f.not_found_path_visit_count   / nullIf(f.page_visit_count, 0)               AS not_found_path_visit_share,
+    f.admin_path_visit_count       / nullIf(f.page_visit_count, 0)               AS admin_path_visit_share,
+    f.dashboard_path_visit_count   / nullIf(f.page_visit_count, 0)               AS dashboard_path_visit_share,
+    f.onboarding_path_visit_count  / nullIf(f.page_visit_count, 0)               AS onboarding_path_visit_share,
+    f.cancel_path_visit_count      / nullIf(f.page_visit_count, 0)               AS cancel_path_visit_share,
+    f.refund_path_visit_count      / nullIf(f.page_visit_count, 0)               AS refund_path_visit_share,
+    f.unique_urls                  / nullIf(f.page_visit_count, 0)               AS unique_url_share,
+    f.unique_click_targets         / nullIf(f.click_count, 0)                    AS click_target_share,
+    f.unique_form_fields,
+    greatest(0, f.page_visit_count - f.unique_urls) / nullIf(f.page_visit_count, 0) AS page_revisit_share
 FROM aggregated_sufficient_statistics f
 """.strip()
 
@@ -258,9 +323,34 @@ SELECT
     rf.network_request_duration_mean_ms,
     rf.network_request_duration_stddev_ms,
     rf.network_failure_ratio,
-    rf.unique_urls,
-    rf.unique_click_targets,
-    rf.page_revisit_count
+    rf.network_4xx_ratio,
+    rf.network_5xx_ratio,
+    rf.scroll_to_top_rate,
+    rf.backspace_ratio,
+    rf.long_idle_gap_share,
+    rf.console_warn_rate,
+    rf.mutation_rate,
+    rf.viewport_resize_count,
+    rf.touch_event_rate,
+    rf.selection_copy_count,
+    rf.login_path_visit_share,
+    rf.signup_path_visit_share,
+    rf.checkout_path_visit_share,
+    rf.cart_path_visit_share,
+    rf.billing_path_visit_share,
+    rf.settings_path_visit_share,
+    rf.account_path_visit_share,
+    rf.error_path_visit_share,
+    rf.not_found_path_visit_share,
+    rf.admin_path_visit_share,
+    rf.dashboard_path_visit_share,
+    rf.onboarding_path_visit_share,
+    rf.cancel_path_visit_share,
+    rf.refund_path_visit_share,
+    rf.unique_url_share,
+    rf.click_target_share,
+    rf.unique_form_fields,
+    rf.page_revisit_share
 FROM eligible_sessions e
 INNER JOIN replay_features rf ON rf.team_id = e.team_id AND rf.session_id = e.session_id_str
 """.strip()
