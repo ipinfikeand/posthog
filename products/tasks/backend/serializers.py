@@ -21,7 +21,10 @@ from products.signals.backend.models import SignalReportTask
 from .constants import (
     ALL_INITIAL_PERMISSION_MODE_CHOICES,
     CODEX_INITIAL_PERMISSION_MODE_CHOICES,
+    CODEX_SERVICE_TIER_CHOICES,
+    DEFAULT_CODEX_SERVICE_TIER,
     INITIAL_PERMISSION_MODE_CHOICES,
+    SERVICE_TIER_CONFIG_ID,
 )
 from .models import SandboxEnvironment, Task, TaskAutomation, TaskRun
 from .services.title_generator import generate_task_title
@@ -302,6 +305,13 @@ class TaskRunUpdateSerializer(serializers.Serializer):
         help_text="Transition a cloud run to local. Use the resume_in_cloud action to move a run into cloud.",
     )
 
+    def validate_state(self, value: dict) -> dict:
+        service_tier = value.get("service_tier")
+        if service_tier is not None and service_tier not in CODEX_SERVICE_TIER_CHOICES:
+            allowed_values = ", ".join(f"'{choice}'" for choice in CODEX_SERVICE_TIER_CHOICES)
+            raise serializers.ValidationError(f"service_tier must be one of: {allowed_values}.")
+        return value
+
 
 class TaskRunArtifactResponseSerializer(serializers.Serializer):
     id = serializers.CharField(required=False, help_text="Stable identifier for the artifact within this run")
@@ -333,6 +343,9 @@ class TaskRunDetailSerializer(serializers.ModelSerializer):
     reasoning_effort = serializers.SerializerMethodField(
         help_text="Configured reasoning effort for this run when the selected model supports it."
     )
+    service_tier = serializers.SerializerMethodField(
+        help_text="Configured Codex service tier for this run, such as 'fast'."
+    )
 
     class Meta:
         model = TaskRun
@@ -347,6 +360,7 @@ class TaskRunDetailSerializer(serializers.ModelSerializer):
             "provider",
             "model",
             "reasoning_effort",
+            "service_tier",
             "log_url",
             "error_message",
             "output",
@@ -434,6 +448,16 @@ class TaskRunDetailSerializer(serializers.ModelSerializer):
     def get_reasoning_effort(self, obj: TaskRun) -> str | None:
         state = self._get_run_state(obj)
         return state.reasoning_effort.value if state.reasoning_effort is not None else None
+
+    @extend_schema_field(
+        serializers.ChoiceField(
+            choices=CODEX_SERVICE_TIER_CHOICES,
+            allow_null=True,
+            help_text="Configured Codex service tier for this run, such as 'standard', 'fast', or 'flex'.",
+        )
+    )
+    def get_service_tier(self, obj: TaskRun) -> str | None:
+        return self._get_run_state(obj).service_tier
 
     def validate_task(self, value):
         team = self.context.get("team")
@@ -912,6 +936,7 @@ class TaskRunCreateRequestSerializer(serializers.Serializer):
     RUN_SOURCE_CHOICES = [source.value for source in RunSource]
     RUNTIME_ADAPTER_CHOICES = [adapter.value for adapter in RuntimeAdapter]
     REASONING_EFFORT_CHOICES = [effort.value for effort in PUBLIC_REASONING_EFFORTS]
+    SERVICE_TIER_CHOICES = CODEX_SERVICE_TIER_CHOICES
 
     mode = serializers.ChoiceField(
         choices=["interactive", "background"],
@@ -984,6 +1009,15 @@ class TaskRunCreateRequestSerializer(serializers.Serializer):
         default=None,
         help_text="Reasoning effort to request for models that expose an effort control.",
     )
+    service_tier = serializers.ChoiceField(
+        choices=SERVICE_TIER_CHOICES,
+        required=False,
+        default=None,
+        help_text=(
+            "Codex service tier for this run. Use 'standard' for default behavior, "
+            "'fast' for Fast Mode, or 'flex' for Flex Mode."
+        ),
+    )
     github_user_token = serializers.CharField(
         required=False,
         default=None,
@@ -1036,7 +1070,12 @@ class TaskRunCreateRequestSerializer(serializers.Serializer):
             attrs.pop("pending_user_message", None)
 
         runtime_fields = ("runtime_adapter", "model")
-        has_runtime_selection = any(attrs.get(field) is not None for field in (*runtime_fields, "reasoning_effort"))
+        service_tier = attrs.get("service_tier")
+        has_nonstandard_service_tier = service_tier is not None and service_tier != DEFAULT_CODEX_SERVICE_TIER
+        has_runtime_selection = (
+            any(attrs.get(field) is not None for field in (*runtime_fields, "reasoning_effort"))
+            or has_nonstandard_service_tier
+        )
 
         if not has_runtime_selection:
             if errors:
@@ -1055,6 +1094,9 @@ class TaskRunCreateRequestSerializer(serializers.Serializer):
         if reasoning_effort_error is not None:
             errors["reasoning_effort"] = reasoning_effort_error
 
+        if service_tier is not None and attrs.get("runtime_adapter") not in (None, RuntimeAdapter.CODEX.value):
+            errors["service_tier"] = "This field is only supported for runtime_adapter 'codex'."
+
         if errors:
             raise serializers.ValidationError(errors)
 
@@ -1068,6 +1110,7 @@ class TaskRunBootstrapCreateRequestSerializer(serializers.Serializer):
     RUN_SOURCE_CHOICES = [source.value for source in RunSource]
     RUNTIME_ADAPTER_CHOICES = [adapter.value for adapter in RuntimeAdapter]
     REASONING_EFFORT_CHOICES = [effort.value for effort in PUBLIC_REASONING_EFFORTS]
+    SERVICE_TIER_CHOICES = CODEX_SERVICE_TIER_CHOICES
 
     environment = serializers.ChoiceField(
         choices=[environment.value for environment in TaskRun.Environment],
@@ -1129,6 +1172,15 @@ class TaskRunBootstrapCreateRequestSerializer(serializers.Serializer):
         default=None,
         help_text="Reasoning effort to request for models that expose an effort control.",
     )
+    service_tier = serializers.ChoiceField(
+        choices=SERVICE_TIER_CHOICES,
+        required=False,
+        default=None,
+        help_text=(
+            "Codex service tier for this run. Use 'standard' for default behavior, "
+            "'fast' for Fast Mode, or 'flex' for Flex Mode."
+        ),
+    )
     github_user_token = serializers.CharField(
         required=False,
         default=None,
@@ -1169,7 +1221,12 @@ class TaskRunBootstrapCreateRequestSerializer(serializers.Serializer):
                     )
 
         runtime_fields = ("runtime_adapter", "model")
-        has_runtime_selection = any(attrs.get(field) is not None for field in (*runtime_fields, "reasoning_effort"))
+        service_tier = attrs.get("service_tier")
+        has_nonstandard_service_tier = service_tier is not None and service_tier != DEFAULT_CODEX_SERVICE_TIER
+        has_runtime_selection = (
+            any(attrs.get(field) is not None for field in (*runtime_fields, "reasoning_effort"))
+            or has_nonstandard_service_tier
+        )
         if not has_runtime_selection:
             if errors:
                 raise serializers.ValidationError(errors)
@@ -1186,6 +1243,9 @@ class TaskRunBootstrapCreateRequestSerializer(serializers.Serializer):
         )
         if reasoning_effort_error is not None:
             errors["reasoning_effort"] = reasoning_effort_error
+
+        if service_tier is not None and attrs.get("runtime_adapter") not in (None, RuntimeAdapter.CODEX.value):
+            errors["service_tier"] = "This field is only supported for runtime_adapter 'codex'."
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -1217,6 +1277,7 @@ class TaskRunStartRequestSerializer(serializers.Serializer):
 
 
 class ClaudeTaskRunCreateSchemaSerializer(TaskRunCreateRequestSerializer):
+    service_tier = None
     runtime_adapter = serializers.ChoiceField(
         choices=[RuntimeAdapter.CLAUDE.value],
         required=True,
@@ -1251,6 +1312,12 @@ class CodexTaskRunCreateSchemaSerializer(TaskRunCreateRequestSerializer):
         required=False,
         default=None,
         help_text="Initial permission mode for Codex runtimes.",
+    )
+    service_tier = serializers.ChoiceField(
+        choices=CODEX_SERVICE_TIER_CHOICES,
+        required=False,
+        default=None,
+        help_text="Codex service tier for this run.",
     )
 
 
@@ -1404,6 +1471,12 @@ class TaskRunCommandRequestSerializer(serializers.Serializer):
         elif method == "set_config_option":
             self._require_nonempty_string(params, "configId")
             self._require_nonempty_string(params, "value")
+            if (
+                params.get("configId") == SERVICE_TIER_CONFIG_ID
+                and params.get("value") not in CODEX_SERVICE_TIER_CHOICES
+            ):
+                allowed_values = ", ".join(f"'{choice}'" for choice in CODEX_SERVICE_TIER_CHOICES)
+                raise serializers.ValidationError({"params": f"service_tier value must be one of: {allowed_values}."})
         return attrs
 
 

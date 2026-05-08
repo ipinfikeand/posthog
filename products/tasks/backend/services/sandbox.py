@@ -25,6 +25,8 @@ from django.conf import settings
 import structlog
 from pydantic import BaseModel
 
+from products.tasks.backend.constants import DEFAULT_CODEX_SERVICE_TIER
+
 if TYPE_CHECKING:
     from products.tasks.backend.temporal.process_task.utils import McpServerConfig
 
@@ -99,6 +101,7 @@ def build_agent_runtime_env_prefix(
     provider: str | None = None,
     model: str | None = None,
     reasoning_effort: str | None = None,
+    service_tier: str | None = None,
 ) -> str:
     env_vars = {
         "POSTHOG_CODE_INTERACTION_ORIGIN": interaction_origin,
@@ -106,6 +109,7 @@ def build_agent_runtime_env_prefix(
         "POSTHOG_CODE_PROVIDER": provider,
         "POSTHOG_CODE_MODEL": model,
         "POSTHOG_CODE_REASONING_EFFORT": reasoning_effort,
+        "POSTHOG_CODE_SERVICE_TIER": service_tier if service_tier != DEFAULT_CODEX_SERVICE_TIER else None,
     }
     assignments = " ".join(
         f"{name}={shlex.quote(value)}" for name, value in env_vars.items() if value is not None and value != ""
@@ -212,6 +216,7 @@ class SandboxBase(ABC):
         provider: str | None = None,
         model: str | None = None,
         reasoning_effort: str | None = None,
+        service_tier: str | None = None,
         mcp_configs: list[McpServerConfig] | None = None,
         allowed_domains: list[str] | None = None,
     ) -> None:

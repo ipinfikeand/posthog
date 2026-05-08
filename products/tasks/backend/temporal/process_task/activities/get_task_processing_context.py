@@ -94,6 +94,11 @@ class TaskProcessingContext:
         return value if isinstance(value, str) else None
 
     @property
+    def service_tier(self) -> str | None:
+        value = (self.state or {}).get("service_tier")
+        return value if isinstance(value, str) else None
+
+    @property
     def run_source(self) -> str | None:
         value = (self.state or {}).get("run_source")
         return value if isinstance(value, str) else None
@@ -134,6 +139,7 @@ class TaskProcessingContext:
             "provider": self.provider,
             "model": self.model,
             "reasoning_effort": self.reasoning_effort,
+            "service_tier": self.service_tier,
         }
 
 

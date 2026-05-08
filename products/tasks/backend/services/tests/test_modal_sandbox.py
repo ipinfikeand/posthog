@@ -327,6 +327,7 @@ class TestModalSandboxAgentServer:
             provider="openai",
             model="gpt-5.3-codex",
             reasoning_effort="high",
+            service_tier="fast",
         )
 
         command = mock_sandbox.execute.call_args_list[0][0][0]
@@ -334,6 +335,7 @@ class TestModalSandboxAgentServer:
         assert "POSTHOG_CODE_PROVIDER=openai" in command
         assert "POSTHOG_CODE_MODEL=gpt-5.3-codex" in command
         assert "POSTHOG_CODE_REASONING_EFFORT=high" in command
+        assert "POSTHOG_CODE_SERVICE_TIER=fast" in command
 
     def test_start_agent_server_raises_when_not_running(self, mock_sandbox: Any):
         mock_sandbox._sandbox.poll.return_value = 0

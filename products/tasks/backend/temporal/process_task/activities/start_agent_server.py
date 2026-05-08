@@ -195,6 +195,7 @@ def start_agent_server(input: StartAgentServerInput) -> StartAgentServerOutput:
                 provider=ctx.provider,
                 model=ctx.model,
                 reasoning_effort=ctx.reasoning_effort,
+                service_tier=ctx.service_tier,
                 mcp_configs=mcp_configs or None,
                 allowed_domains=ctx.allowed_domains,
             )
