@@ -76,7 +76,9 @@ class AccountSaveUniquenessTest(BaseTest):
             properties={"group_type_index": 0, "group_keys": ["acme"]},
         )
 
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(
+            DjangoValidationError, match=r"group_keys already attached to a different account: \['acme'\]"
+        ):
             Account.objects.create(
                 team=self.team,
                 name="Second",
@@ -96,7 +98,9 @@ class AccountSaveUniquenessTest(BaseTest):
         )
 
         second.properties = {"group_type_index": 0, "group_keys": ["acme"]}
-        with pytest.raises(DjangoValidationError):
+        with pytest.raises(
+            DjangoValidationError, match=r"group_keys already attached to a different account: \['acme'\]"
+        ):
             second.save()
 
         first.refresh_from_db()
@@ -104,15 +108,14 @@ class AccountSaveUniquenessTest(BaseTest):
         assert first.properties.group_keys == ["acme"]
         assert second.properties.group_keys == ["beta"]
 
-    def test_save_rejects_duplicate_keys_within_same_account(self):
-        account = Account(
-            team=self.team,
-            name="Dup",
-        )
+    def test_save_dedupes_group_keys(self):
+        account = Account(team=self.team, name="Dup")
         account.properties = {"group_type_index": 0, "group_keys": ["acme", "acme"]}
 
-        with pytest.raises(DjangoValidationError):
-            account.save()
+        account.save()
+
+        account.refresh_from_db()
+        assert account.properties.group_keys == ["acme"]
 
     def test_save_allows_idempotent_resave(self):
         account = Account.objects.create(
@@ -142,6 +145,30 @@ class AccountSaveUniquenessTest(BaseTest):
         )
 
         assert account.properties.group_keys == ["acme"]
+
+
+class AccountManagerTest(BaseTest):
+    def setUp(self):
+        self.config = TeamCustomerAnalyticsConfig.objects.get(team=self.team)
+        self.config.account_group_type_index = 0
+        self.config.save()
+
+    def test_filter_group_key__contains_any(self):
+        account = Account.objects.create(
+            team=self.team, name="Existing", properties={"group_keys": ["foo"], "group_type_index": 0}
+        )
+        another_account = Account.objects.create(
+            team=self.team, name="Also existing", properties={"group_keys": ["bar"], "group_type_index": 0}
+        )
+        Account.objects.create(
+            team=self.team, name="Account", properties={"group_keys": ["henlo"], "group_type_index": 0}
+        )
+
+        siblings = Account.objects.filter(team_id=self.team.pk, group_keys__contains_any=["foo", "bar", "baz"])
+
+        assert len(siblings) == 2
+        assert account in siblings
+        assert another_account in siblings
 
 
 class TeamCustomerAnalyticsConfigDriftPolicyTest(BaseTest):

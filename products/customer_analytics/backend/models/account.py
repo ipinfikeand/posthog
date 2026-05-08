@@ -1,14 +1,13 @@
 from typing import Any
-from uuid import UUID
 
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import JSONField
+from django.db.models import JSONField, Q
 from django.db.models.signals import pre_save
 from django.dispatch import receiver
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from posthog.models import User
 from posthog.models.utils import CreatedMetaFields, UpdatedMetaFields, UUIDModel
@@ -34,18 +33,31 @@ class AccountProperties(BaseModel):
             raise ValueError("group_type_index must be set when group_keys is non-empty")
         return self
 
+    @field_validator("group_keys")
+    @classmethod
+    def _dedupe_group_keys(cls, group_keys) -> list[str]:
+        return list(set(group_keys))
+
 
 class AccountManager(models.Manager["Account"]):
-    def get_sibling_accounts(
-        self, *, team_id: int, group_key: str, exclude_pk: "str | UUID | None" = None
-    ) -> models.QuerySet["Account"]:
-        qs = self.filter(
-            team_id=team_id,
-            _properties__contains={"group_keys": [group_key]},
-        )
-        if exclude_pk is not None:
-            qs = qs.exclude(pk=exclude_pk)
-        return qs
+    def filter(self, *args: Any, **kwargs: Any) -> models.QuerySet["Account"]:
+        """
+        Adds the `group_keys__contains_any=[...]` lookup: matches accounts whose stored
+        `group_keys` JSON array shares at least one key with the provided list.
+
+        Limitation: only fires on `Account.objects.filter(...)`. Chained calls
+        (`.all().filter(...)`, `.exclude(...).filter(...)`) go through the QuerySet's
+        `filter` and bypass this override.
+        """
+        if "group_keys__contains_any" in kwargs:
+            keys = kwargs.pop("group_keys__contains_any")
+            if not keys:
+                return self.get_queryset().none()
+            group_key_filter = Q()
+            for group_key in keys:
+                group_key_filter |= Q(_properties__contains={"group_keys": [group_key]})
+            args = (*args, group_key_filter)
+        return super().filter(*args, **kwargs)
 
     def create(
         self,
@@ -102,21 +114,21 @@ class Account(UUIDModel, CreatedMetaFields, UpdatedMetaFields):
         self._validate_group_keys_unique_within_team()
         super().save(*args, **kwargs)
 
+    def get_dupes(self, group_keys: list[str] | set[str]) -> models.QuerySet["Account"]:
+        return type(self).objects.filter(team_id=self.team_id, group_keys__contains_any=group_keys).exclude(pk=self.pk)
+
     def _validate_group_keys_unique_within_team(self) -> None:
-        group_keys = self.properties.group_keys
-        if not group_keys:
+        own_keys = set(self.properties.group_keys)
+        if not own_keys:
             return
 
-        if len(set(group_keys)) != len(group_keys):
-            raise ValidationError("group_keys must not contain duplicates")
-
-        conflicts = [
-            key
-            for key in group_keys
-            if type(self).objects.get_sibling_accounts(team_id=self.team_id, group_key=key, exclude_pk=self.pk).exists()
-        ]
-        if conflicts:
-            raise ValidationError(f"group_keys already attached to a different account: {sorted(conflicts)}")
+        dupes = self.get_dupes(group_keys=own_keys)
+        if dupes.exists():
+            dupe_keys: set[str] = set()
+            for key_list in dupes.values_list("_properties__group_keys", flat=True):
+                dupe_keys.update(key_list)
+            shared = sorted(own_keys & dupe_keys)
+            raise ValidationError(f"group_keys already attached to a different account: {shared}")
 
 
 @receiver(pre_save, sender="customer_analytics.TeamCustomerAnalyticsConfig")
