@@ -199,6 +199,7 @@ describe('ErrorTrackingConsumer', () => {
                 ),
             }),
             teamManager: hub.teamManager,
+            materializedColumnSlotManager: hub.materializedColumnSlotManager,
             errorTrackingSettingsManager: new ErrorTrackingSettingsManager(hub.postgres),
             hogTransformer: mockHogTransformer,
             groupTypeManager: hub.groupTypeManager,

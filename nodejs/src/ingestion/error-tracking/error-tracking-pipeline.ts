@@ -3,6 +3,7 @@ import { Message } from 'node-rdkafka'
 import { PluginEvent } from '~/plugin-scaffold'
 import { ErrorTrackingSettings, ErrorTrackingSettingsManager } from '~/utils/error-tracking-settings-manager'
 import { EventIngestionRestrictionManager } from '~/utils/event-ingestion-restrictions'
+import { MaterializedColumnSlotManager } from '~/utils/materialized-column-slot-manager'
 import { PromiseScheduler } from '~/utils/promise-scheduler'
 import { TeamManager } from '~/utils/team-manager'
 import { GroupTypeManager } from '~/worker/ingestion/group-type-manager'
@@ -66,6 +67,7 @@ export interface ErrorTrackingPipelineConfig {
     groupId: string
     promiseScheduler: PromiseScheduler
     teamManager: TeamManager
+    materializedColumnSlotManager: MaterializedColumnSlotManager
     personRepository: PersonRepository
     hogTransformer: ErrorTrackingHogTransformer | null
     cymbalClient: CymbalClient
@@ -149,6 +151,7 @@ export function createErrorTrackingPipeline(
         groupId,
         promiseScheduler,
         teamManager,
+        materializedColumnSlotManager,
         personRepository,
         hogTransformer,
         cymbalClient,
@@ -250,7 +253,9 @@ export function createErrorTrackingPipeline(
                                                 .pipe(createErrorTrackingPrepareEventStep())
                                                 // Map group types to indexes (read-only, no new group types created)
                                                 .pipe(createReadOnlyProcessGroupsStep(groupTypeManager))
-                                                .pipe(createCreateEventStep(EVENTS_OUTPUT))
+                                                .pipe(
+                                                    createCreateEventStep(EVENTS_OUTPUT, materializedColumnSlotManager)
+                                                )
                                                 .pipe(
                                                     topHogWrapper(
                                                         createEmitEventStep({
