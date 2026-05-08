@@ -1,3 +1,6 @@
+from typing import Any
+from uuid import UUID
+
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -32,9 +35,9 @@ class AccountProperties(BaseModel):
         return self
 
 
-class AccountManager(models.Manager):
+class AccountManager(models.Manager["Account"]):
     def get_sibling_accounts(
-        self, *, team_id: int, group_key: str, exclude_pk: "str | None" = None
+        self, *, team_id: int, group_key: str, exclude_pk: "str | UUID | None" = None
     ) -> models.QuerySet["Account"]:
         qs = self.filter(
             team_id=team_id,
@@ -43,6 +46,21 @@ class AccountManager(models.Manager):
         if exclude_pk is not None:
             qs = qs.exclude(pk=exclude_pk)
         return qs
+
+    def create(
+        self,
+        *,
+        properties: "dict | AccountProperties | None" = None,
+        **kwargs: Any,
+    ) -> "Account":
+        if properties is not None:
+            validated = (
+                properties
+                if isinstance(properties, AccountProperties)
+                else AccountProperties.model_validate(properties)
+            )
+            kwargs["_properties"] = validated.model_dump(mode="json")
+        return super().create(**kwargs)
 
 
 class Account(UUIDModel, CreatedMetaFields, UpdatedMetaFields):
