@@ -1277,7 +1277,7 @@ class TaskRunStartRequestSerializer(serializers.Serializer):
 
 
 class ClaudeTaskRunCreateSchemaSerializer(TaskRunCreateRequestSerializer):
-    service_tier = None
+    service_tier = None  # type: ignore[assignment]
     runtime_adapter = serializers.ChoiceField(
         choices=[RuntimeAdapter.CLAUDE.value],
         required=True,
