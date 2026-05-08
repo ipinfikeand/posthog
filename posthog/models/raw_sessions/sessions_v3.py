@@ -175,7 +175,13 @@ CREATE TABLE IF NOT EXISTS {table_name}
     emails SimpleAggregateFunction(groupUniqArrayArray({max_emails}), Array(String)),
 
     -- Replay
-    has_replay_events SimpleAggregateFunction(max, Boolean)
+    has_replay_events SimpleAggregateFunction(max, Boolean),
+
+    -- Interestingness score, written by the Temporal session-interestingness scoring sweep.
+    -- max() is null-safe: scoring re-runs (or the original score-less event MV row) merge
+    -- to the highest non-null score, which is fine because the sweep is idempotent and any
+    -- second pass that produces a different value is the new model winning over the old one.
+    interestingness_score SimpleAggregateFunction(max, Nullable(Float32))
 ) ENGINE = {engine}
 """
 

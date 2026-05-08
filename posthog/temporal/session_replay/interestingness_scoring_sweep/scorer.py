@@ -16,25 +16,19 @@ booster declares a feature without a runtime range contract. A retrained
 booster with a different feature set updates serving without a code change
 to `features.py` (only `FEATURE_RANGES` needs to be kept in sync, which is
 itself enforced at warmup).
-
-xgboost is lazy-imported on first use so workers that don't pull this task
-queue (most of them) don't pay the import cost or require xgboost to be
-installed at all.
 """
 
 from __future__ import annotations
 
 import os
 import threading
-from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
+import xgboost as xgb
 import structlog
 
 from posthog.temporal.session_replay.interestingness_scoring_sweep.features import assert_ranges_cover, feature_matrix
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 logger = structlog.get_logger(__name__)
 
@@ -42,12 +36,15 @@ logger = structlog.get_logger(__name__)
 # Path on disk where the trained booster is mounted/baked. Override with
 # `SESSION_INTERESTINGNESS_MODEL_PATH` in an environment-specific settings file
 # or container spec — keeps this module portable across local / staging / prod.
+# The default points at the booster file that ships in this package
+# (`model.ubj` next to `scorer.py`), so dev/test/CI all use the same
+# checked-in model the SQL/booster parity test pins against. Production
+# overrides this via the env var to point at the prod-trained model.
 _MODEL_PATH_ENV_VAR = "SESSION_INTERESTINGNESS_MODEL_PATH"
-_DEFAULT_MODEL_PATH = "/models/session_interestingness/model.ubj"
+_BUNDLED_MODEL_PATH = os.path.join(os.path.dirname(__file__), "model.ubj")
+_DEFAULT_MODEL_PATH = _BUNDLED_MODEL_PATH
 
-# Held as Any (not `xgb.Booster | None`) so workers without xgboost installed
-# can still import the module cleanly.
-_BOOSTER: Any = None
+_BOOSTER: xgb.Booster | None = None
 # Cached tuple of `_BOOSTER.feature_names` to avoid the C++ → Python attribute
 # lookup on the predict hot path. Set in lockstep with `_BOOSTER`; reset to
 # None whenever `_BOOSTER` is reset (test fixtures clear both).
@@ -59,8 +56,8 @@ def _model_path() -> str:
     return os.environ.get(_MODEL_PATH_ENV_VAR, _DEFAULT_MODEL_PATH)
 
 
-def _load_booster() -> Any:
-    """Lazy load + cache the booster; thread-safe under high `max_concurrent_activities`.
+def _load_booster() -> xgb.Booster:
+    """Cache + return the booster; thread-safe under high `max_concurrent_activities`.
 
     Held under a lock only on first load. Subsequent calls hit the fast path
     (one global-not-None check), so the lock isn't on the per-predict path.
@@ -77,8 +74,6 @@ def _load_booster() -> Any:
     with _BOOSTER_LOCK:
         if _BOOSTER is not None:
             return _BOOSTER
-
-        import xgboost as xgb  # noqa: PLC0415  (intentional: lazy import, see module docstring)
 
         path = _model_path()
         booster = xgb.Booster()
@@ -143,8 +138,6 @@ def predict(df: pd.DataFrame) -> np.ndarray:
     path and skips re-validation. Returned array is positionally aligned
     with `df.index`.
     """
-    import xgboost as xgb  # noqa: PLC0415  (intentional: lazy import, see module docstring)
-
     booster = _load_booster()
     feature_names = get_feature_names()
 

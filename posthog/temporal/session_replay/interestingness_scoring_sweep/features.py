@@ -137,33 +137,8 @@ FEATURE_RANGES: dict[str, FeatureSpec] = {
     "network_request_duration_mean_ms": _NONNEG_FLOAT,
     "network_request_duration_stddev_ms": _NONNEG_FLOAT,
     "network_failure_ratio": _RATIO,
-    "network_4xx_ratio": _RATIO,
-    "network_5xx_ratio": _RATIO,
-    "scroll_to_top_rate": _RATE,
-    "backspace_ratio": _RATIO,
-    "long_idle_gap_count": _NONNEG_COUNT,
-    "console_warn_rate": _RATE,
-    "mutation_rate": _RATE,
-    "viewport_resize_count": _NONNEG_COUNT,
-    "touch_event_rate": _RATE,
-    "selection_copy_count": _NONNEG_COUNT,
-    "login_path_visit_count": _NONNEG_COUNT,
-    "signup_path_visit_count": _NONNEG_COUNT,
-    "checkout_path_visit_count": _NONNEG_COUNT,
-    "cart_path_visit_count": _NONNEG_COUNT,
-    "billing_path_visit_count": _NONNEG_COUNT,
-    "settings_path_visit_count": _NONNEG_COUNT,
-    "account_path_visit_count": _NONNEG_COUNT,
-    "error_path_visit_count": _NONNEG_COUNT,
-    "not_found_path_visit_count": _NONNEG_COUNT,
-    "admin_path_visit_count": _NONNEG_COUNT,
-    "dashboard_path_visit_count": _NONNEG_COUNT,
-    "onboarding_path_visit_count": _NONNEG_COUNT,
-    "cancel_path_visit_count": _NONNEG_COUNT,
-    "refund_path_visit_count": _NONNEG_COUNT,
     "unique_urls": _NONNEG_COUNT,
     "unique_click_targets": _NONNEG_COUNT,
-    "unique_form_fields": _NONNEG_COUNT,
     "page_revisit_count": _NONNEG_COUNT,
 }
 
@@ -235,8 +210,9 @@ def _check_finite(name: str, series: pd.Series) -> None:
     if series.dtype.kind != "f":
         return
     arr = series.to_numpy()
-    if not np.all(np.isfinite(arr) | np.isnan(arr)):
-        bad = series[~(np.isfinite(arr) | np.isnan(arr))]
+    finite_mask = np.isfinite(arr) | np.isnan(arr)
+    if not np.all(finite_mask):
+        bad = series.loc[~pd.Series(finite_mask, index=series.index)]
         raise FeatureValidationError(
             f"Feature {name!r} contains non-finite values (excluding NaN): first 5 = {bad.head(5).tolist()}."
         )
@@ -248,13 +224,13 @@ def _check_range(name: str, series: pd.Series, spec: FeatureSpec) -> None:
     if finite.empty:
         return
     if spec.min_value is not None:
-        below = finite[finite < spec.min_value]
+        below = finite.loc[finite.lt(spec.min_value)]
         if not below.empty:
             raise FeatureValidationError(
                 f"Feature {name!r} has {len(below)} value(s) below min={spec.min_value}: e.g. {below.head(5).tolist()}."
             )
     if spec.max_value is not None:
-        above = finite[finite > spec.max_value]
+        above = finite.loc[finite.gt(spec.max_value)]
         if not above.empty:
             raise FeatureValidationError(
                 f"Feature {name!r} has {len(above)} value(s) above max={spec.max_value}: e.g. {above.head(5).tolist()}."
@@ -277,7 +253,7 @@ def validate_features(df: pd.DataFrame, *, feature_names: tuple[str, ...]) -> No
 
     _check_columns(df, feature_names)
     for name in feature_names:
-        series = df[name]
+        series: pd.Series = df.loc[:, name]
         spec = FEATURE_RANGES[name]
         _check_dtype(name, series, spec.dtype_kind)
         _check_finite(name, series)

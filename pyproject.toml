@@ -143,6 +143,7 @@ dependencies = [
     "tbb==2022.3.1; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "webdriver-manager==4.0.2",
     "whitenoise~=6.10.0",
+    "xgboost==3.2.0",
     "xmlsec==1.3.17",
     "zstd==1.5.7.2",
     "zxcvbn==4.5.0",
@@ -270,14 +271,6 @@ dev = [
 sentiment = [
     "optimum[onnxruntime]~=1.25.0",
     "torch~=2.8.0",
-]
-# Opt-in only — installed into the dedicated session-scoring worker image, not the
-# default web/celery/temporal images. xgboost pulls libomp + nvidia-nccl-cu12 (~322MB
-# of CUDA libs on Linux even in CPU-only mode), which we don't want in every worker.
-# Workers pulling INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE need this group; everything
-# else relies on the lazy import in `scorer.py` to never touch the missing module.
-interestingness-scoring = [
-    "xgboost==3.2.0",
 ]
 
 [tool.uv]

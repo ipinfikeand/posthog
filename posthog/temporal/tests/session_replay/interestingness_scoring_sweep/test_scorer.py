@@ -4,12 +4,6 @@ These tests use a real XGBoost booster trained in-memory by the
 `trained_model_path` fixture, saved to disk, and loaded through the same
 code path the production worker hits. No mocking of xgboost itself —
 the goal is to catch regressions in the actual load + predict path.
-
-Skipped wholesale when xgboost is not installed. xgboost lives in the
-`interestingness-scoring` dependency group rather than the default project
-deps to keep nvidia-nccl-cu12 (~322 MB) out of the standard worker image;
-run `uv sync --group interestingness-scoring` to enable this module
-locally.
 """
 
 from __future__ import annotations
@@ -22,18 +16,14 @@ import pytest
 
 import numpy as np
 import pandas as pd
+import xgboost as xgb
 
-xgb = pytest.importorskip(
-    "xgboost",
-    reason="install via `uv sync --group interestingness-scoring`",
-)
-
-from posthog.temporal.session_replay.interestingness_scoring_sweep import scorer as scorer_mod  # noqa: E402
-from posthog.temporal.session_replay.interestingness_scoring_sweep.features import (  # noqa: E402
+from posthog.temporal.session_replay.interestingness_scoring_sweep import scorer as scorer_mod
+from posthog.temporal.session_replay.interestingness_scoring_sweep.features import (
     FEATURE_RANGES,
     MissingFeatureRangeError,
 )
-from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import (  # noqa: E402
+from posthog.temporal.session_replay.interestingness_scoring_sweep.scorer import (
     ScoreRangeError,
     _load_booster,
     get_feature_names,
@@ -59,7 +49,7 @@ def _synthetic_training_frame(
     """
     rng = np.random.default_rng(seed)
     data = rng.random((rows, len(feature_names))).astype(np.float32)
-    df = pd.DataFrame(data, columns=list(feature_names))
+    df = pd.DataFrame(data, columns=pd.Index(feature_names))
     df["__label__"] = (df[feature_names[0]] > 0.5).astype(np.int32)
     return df
 
@@ -273,7 +263,7 @@ class TestPredict:
         np.testing.assert_array_equal(scores_a, scores_b)
 
     def test_predict_empty_dataframe(self, trained_model_path: Path) -> None:
-        df = pd.DataFrame(columns=list(_TRAINING_FEATURE_NAMES))
+        df = pd.DataFrame(columns=pd.Index(_TRAINING_FEATURE_NAMES))
         scores = predict(df)
         assert scores.shape == (0,)
 

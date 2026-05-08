@@ -49,15 +49,14 @@ session; CH consumes via the MV which performs a partial-column insert into
 `writable_raw_sessions_v3`. The AggregatingMergeTree then merges the score
 onto the existing session row without disturbing any other column.
 
-Schema gap: a handful of columns referenced by the training query do not yet
-exist on the live `session_replay_features` DDL — `scroll_to_top_count`,
-`backspace_count`, `long_idle_gap_count`, `console_warn_count`,
-`network_4xx_count`, `network_5xx_count`, `mutation_count`,
-`viewport_resize_count`, `touch_event_count`, `selection_copy_count`, every
-`*_path_visit_count`, and `unique_form_field_count`. They are declared in
-the HogQL schema but not yet added to the CH table + Kafka MV; the pipeline
-will fail with `Unknown identifier` until that ALTER lands. See README.md.
+Feature alignment contract: the final SELECT alias list must match the
+booster's `feature_names` exactly (set + order). `feature_columns_in_select`
+extracts the alias list at test time so a unit test can assert parity with
+the bundled `model.ubj` before any chunk ever runs in CH. Drift = silently
+mis-scored sessions, so we catch it at CI rather than at runtime.
 """
+
+import re
 
 from posthog.models.raw_sessions.sessions_v3 import DISTRIBUTED_RAW_SESSIONS_TABLE_V3
 
@@ -70,6 +69,8 @@ SESSION_REPLAY_FEATURES_TABLE = "session_replay_features"
 # --------------------------------------------------------------------------- #
 # Aggregate fragment over `session_replay_features`.                           #
 # Identical column-by-column to the training query's CTE.                      #
+# Only references columns that exist on the live `session_replay_features`     #
+# DDL today (see posthog/session_recordings/sql/session_replay_feature_sql.py).#
 # --------------------------------------------------------------------------- #
 _AGGREGATED_STATS_FRAGMENT = """
 SELECT
@@ -111,33 +112,8 @@ SELECT
     sum(f.network_request_duration_sum)             AS network_request_duration_sum,
     sum(f.network_request_duration_sum_of_squares)  AS network_request_duration_sum_of_squares,
     sum(f.network_request_duration_count)           AS network_request_duration_count,
-    sum(f.scroll_to_top_count)                      AS scroll_to_top_count,
-    sum(f.backspace_count)                          AS backspace_count,
-    sum(f.long_idle_gap_count)                      AS long_idle_gap_count,
-    sum(f.console_warn_count)                       AS console_warn_count,
-    sum(f.network_4xx_count)                        AS network_4xx_count,
-    sum(f.network_5xx_count)                        AS network_5xx_count,
-    sum(f.mutation_count)                           AS mutation_count,
-    sum(f.viewport_resize_count)                    AS viewport_resize_count,
-    sum(f.touch_event_count)                        AS touch_event_count,
-    sum(f.selection_copy_count)                     AS selection_copy_count,
-    sum(f.login_path_visit_count)                   AS login_path_visit_count,
-    sum(f.signup_path_visit_count)                  AS signup_path_visit_count,
-    sum(f.checkout_path_visit_count)                AS checkout_path_visit_count,
-    sum(f.cart_path_visit_count)                    AS cart_path_visit_count,
-    sum(f.billing_path_visit_count)                 AS billing_path_visit_count,
-    sum(f.settings_path_visit_count)                AS settings_path_visit_count,
-    sum(f.account_path_visit_count)                 AS account_path_visit_count,
-    sum(f.error_path_visit_count)                   AS error_path_visit_count,
-    sum(f.not_found_path_visit_count)               AS not_found_path_visit_count,
-    sum(f.admin_path_visit_count)                   AS admin_path_visit_count,
-    sum(f.dashboard_path_visit_count)               AS dashboard_path_visit_count,
-    sum(f.onboarding_path_visit_count)              AS onboarding_path_visit_count,
-    sum(f.cancel_path_visit_count)                  AS cancel_path_visit_count,
-    sum(f.refund_path_visit_count)                  AS refund_path_visit_count,
     uniqExactMerge(f.unique_url_count)              AS unique_urls,
-    uniqExactMerge(f.unique_click_target_count)     AS unique_click_targets,
-    uniqExactMerge(f.unique_form_field_count)       AS unique_form_fields
+    uniqExactMerge(f.unique_click_target_count)     AS unique_click_targets
 FROM {features_table} AS f
 WHERE (f.team_id, f.session_id) GLOBAL IN (SELECT team_id, session_id_str FROM eligible_sessions)
   AND f.min_first_timestamp >= now() - toIntervalDay(%(lookback_days)s)
@@ -191,33 +167,8 @@ SELECT
     sqrt(greatest(0, f.network_request_duration_sum_of_squares / nullIf(f.network_request_duration_count, 0)
                   - pow(f.network_request_duration_sum     / nullIf(f.network_request_duration_count, 0), 2))) AS network_request_duration_stddev_ms,
     f.network_failed_request_count / nullIf(f.network_request_count, 0)          AS network_failure_ratio,
-    f.network_4xx_count            / nullIf(f.network_request_count, 0)          AS network_4xx_ratio,
-    f.network_5xx_count            / nullIf(f.network_request_count, 0)          AS network_5xx_ratio,
-    f.scroll_to_top_count          / nullIf(f.session_duration_s, 0)             AS scroll_to_top_rate,
-    f.backspace_count              / nullIf(f.keypress_count, 0)                 AS backspace_ratio,
-    f.long_idle_gap_count,
-    f.console_warn_count           / nullIf(f.session_duration_s, 0)             AS console_warn_rate,
-    f.mutation_count               / nullIf(f.session_duration_s, 0)             AS mutation_rate,
-    f.viewport_resize_count,
-    f.touch_event_count            / nullIf(f.session_duration_s, 0)             AS touch_event_rate,
-    f.selection_copy_count,
-    f.login_path_visit_count,
-    f.signup_path_visit_count,
-    f.checkout_path_visit_count,
-    f.cart_path_visit_count,
-    f.billing_path_visit_count,
-    f.settings_path_visit_count,
-    f.account_path_visit_count,
-    f.error_path_visit_count,
-    f.not_found_path_visit_count,
-    f.admin_path_visit_count,
-    f.dashboard_path_visit_count,
-    f.onboarding_path_visit_count,
-    f.cancel_path_visit_count,
-    f.refund_path_visit_count,
     f.unique_urls,
     f.unique_click_targets,
-    f.unique_form_fields,
     greatest(0, f.page_visit_count - f.unique_urls) AS page_revisit_count
 FROM aggregated_sufficient_statistics f
 """.strip()
@@ -307,33 +258,8 @@ SELECT
     rf.network_request_duration_mean_ms,
     rf.network_request_duration_stddev_ms,
     rf.network_failure_ratio,
-    rf.network_4xx_ratio,
-    rf.network_5xx_ratio,
-    rf.scroll_to_top_rate,
-    rf.backspace_ratio,
-    rf.long_idle_gap_count,
-    rf.console_warn_rate,
-    rf.mutation_rate,
-    rf.viewport_resize_count,
-    rf.touch_event_rate,
-    rf.selection_copy_count,
-    rf.login_path_visit_count,
-    rf.signup_path_visit_count,
-    rf.checkout_path_visit_count,
-    rf.cart_path_visit_count,
-    rf.billing_path_visit_count,
-    rf.settings_path_visit_count,
-    rf.account_path_visit_count,
-    rf.error_path_visit_count,
-    rf.not_found_path_visit_count,
-    rf.admin_path_visit_count,
-    rf.dashboard_path_visit_count,
-    rf.onboarding_path_visit_count,
-    rf.cancel_path_visit_count,
-    rf.refund_path_visit_count,
     rf.unique_urls,
     rf.unique_click_targets,
-    rf.unique_form_fields,
     rf.page_revisit_count
 FROM eligible_sessions e
 INNER JOIN replay_features rf ON rf.team_id = e.team_id AND rf.session_id = e.session_id_str
@@ -361,3 +287,44 @@ FROM (
     HAVING max(interestingness_score) IS NULL
 )
 """.strip()
+
+
+# --------------------------------------------------------------------------- #
+# Feature-alignment helper                                                     #
+# --------------------------------------------------------------------------- #
+
+# Matches a `<table_alias>.<column_name>` expression on its own line in the
+# final SELECT (one column per line, optional trailing comma). The alias
+# group `(\w+)` comes back as `e` for ID columns or `rf` for features —
+# the caller filters by alias.
+_SELECT_ALIAS_RE = re.compile(r"^\s*(\w+)\.(\w+)\s*,?\s*$", re.MULTILINE)
+
+
+def feature_columns_in_select(sql: str, *, feature_table_alias: str = "rf") -> tuple[str, ...]:
+    """Return the ordered tuple of feature column aliases from the final SELECT.
+
+    Pure-string parser used by the SQL/booster parity test in
+    `test_sql_alignment.py` — drift between this list and the booster's
+    `feature_names` would silently mis-score sessions (validate_features
+    would catch it at runtime, but the test catches it at CI before any
+    deploy).
+
+    Walks `fetch_features_sql()`'s output, extracts every line of the form
+    `<feature_table_alias>.<name>` from after the last CTE close-paren, and
+    returns them in source order. ID columns (alias `e.`) are ignored by
+    matching only `feature_table_alias`. Returns the empty tuple if the
+    final SELECT is malformed — the caller should treat that as a hard fail.
+    """
+    # Locate the body after the CTE block: everything from the final
+    # `)\nSELECT` to the next `FROM`. Anchoring on the FROM keeps the parser
+    # from accidentally picking up `<alias>.<col>` references that live in
+    # ON clauses or aggregate args inside earlier CTEs.
+    final_select = re.search(
+        r"\)\s*SELECT\b(?P<body>.*?)\bFROM\s+eligible_sessions\b",
+        sql,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    if not final_select:
+        return ()
+    body = final_select.group("body")
+    return tuple(name for alias, name in _SELECT_ALIAS_RE.findall(body) if alias == feature_table_alias)

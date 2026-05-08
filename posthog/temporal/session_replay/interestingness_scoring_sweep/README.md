@@ -154,27 +154,23 @@ threads fighting for N cores.
 
 ## Model file
 
-Loaded once per worker process from
-`SESSION_INTERESTINGNESS_MODEL_PATH` (defaults to
-`/models/session_interestingness/model.ubj`). Bake into the worker image or
-mount via a sidecar. First-call latency is paid once per pod; warm with
-`scorer.warmup()` from the worker bootstrap to remove that latency from the
-first chunk's wall time.
+A trained booster ships with the package at
+`posthog/temporal/session_replay/interestingness_scoring_sweep/model.ubj`,
+and that path is the default for `SESSION_INTERESTINGNESS_MODEL_PATH`.
+Override the env var in production to point at a sidecar-mounted booster
+when the bundled file should be replaced without a code deploy. First-call
+latency is paid once per pod; warm with `scorer.warmup()` from the worker
+bootstrap to remove that latency from the first chunk's wall time.
 
-`xgboost` is **not** a top-level dependency — it's in the
-`[dependency-groups].interestingness-scoring` group in `pyproject.toml`.
-That group needs to be installed (`uv sync --group interestingness-scoring`)
-on the dedicated scoring-worker image, and only on that image. Every other
-worker image stays lean — adding xgboost eagerly to all workers pulls
-`nvidia-nccl-cu12` (~322 MB of CUDA libs on Linux, even in CPU-only mode)
-into the layer cache.
+The bundled file is also the source of truth for the `test_sql_alignment.py`
+parity test — any SQL/booster drift fails CI before the activity ever runs
+in production. See "Updating features" below for the workflow when the
+feature set changes.
 
-Workers that don't have the group installed simply don't import
-`scorer.py` because they never pull `INTERESTINGNESS_SCORING_SWEEP_TASK_QUEUE`.
-The lazy import inside `scorer._load_booster` is a defense in depth — if
-some other code path ever imports `scorer` indirectly on a worker without
-the group, the `import xgboost` line is the failure surface, with a clear
-`ModuleNotFoundError` rather than a 322 MB image layer.
+`xgboost==3.2.0` is a top-level dependency, installed in every Python image.
+It pulls `nvidia-nccl-cu12` (~322 MB of CUDA libs on Linux, even in CPU-only
+mode) into the layer cache; that's a deliberate trade-off for keeping a
+single image rather than maintaining a dedicated scoring-worker variant.
 
 ## Updating features
 
@@ -189,17 +185,28 @@ What still needs to be kept in sync **outside** the booster file:
 1. `sql.fetch_features_sql` — the SELECT column list (plus the
    `_AGGREGATED_STATS_FRAGMENT` and `_REPLAY_FEATURES_FRAGMENT` CTEs that
    produce them) must produce a column named exactly the same as every
-   `feature_names` entry. `validate_features` enforces this on every
-   chunk; a missing or extra column fails fast with `FeatureValidationError`.
+   `feature_names` entry, in the same order. `test_sql_alignment.py`
+   asserts this against the bundled `model.ubj` at CI time;
+   `validate_features` enforces it again at runtime as a defense in depth.
 2. `features.FEATURE_RANGES` — runtime dtype + value-bounds contract.
    xgboost does **not** carry value ranges in the model file, so this is
    the runtime guard against "model trained on [0, 1] but the SQL started
    returning 9999". `assert_ranges_cover` runs inside `_load_booster` at
    warmup; any feature in the booster without a `FEATURE_RANGES` entry
    raises `MissingFeatureRangeError` before a single chunk is dispatched.
+   `test_sql_alignment.py` also asserts equality (not just superset) so
+   stale entries get flagged in CI too.
 
-Bump `features.MODEL_FEATURE_SCHEMA_VERSION` whenever the set changes; it
-gets logged on every chunk so distribution shifts can be traced to a deploy.
+Workflow when changing features:
+
+1. Retrain on the new feature set; replace `model.ubj` (committed to repo).
+2. Update `_AGGREGATED_STATS_FRAGMENT`, `_REPLAY_FEATURES_FRAGMENT`, and
+   the final SELECT in `sql.py` to produce/expose the new aliases.
+3. Update `FEATURE_RANGES` to mirror the new set.
+4. Bump `features.MODEL_FEATURE_SCHEMA_VERSION`.
+5. `pytest posthog/temporal/tests/session_replay/interestingness_scoring_sweep/test_sql_alignment.py`
+   passes when all four are aligned.
+
 `validate_features` is a hard gate — any mismatch raises
 `FeatureValidationError`, marked `non_retryable=True` in the workflow so a
 schema bug fails fast rather than burning retries.
@@ -218,22 +225,13 @@ tick's CH `IS NULL` filter naturally picks up whatever the slow tick missed).
 
 These are deliberately out of scope for the initial PR:
 
-- **Add the missing `session_replay_features` columns.** The training query
-  references columns that are not currently in
-  `posthog/session_recordings/sql/session_replay_feature_sql.py`:
-  `scroll_to_top_count`, `backspace_count`, `long_idle_gap_count`,
-  `console_warn_count`, `network_4xx_count`, `network_5xx_count`,
-  `mutation_count`, `viewport_resize_count`, `touch_event_count`,
-  `selection_copy_count`, all `*_path_visit_count` columns
-  (login/signup/checkout/cart/billing/settings/account/error/not_found/
-  admin/dashboard/onboarding/cancel/refund), and
-  `unique_form_field_count`. Until those land, `fetch_features_sql` will
-  fail with `Unknown identifier`. The replay feature pipeline (Kafka MV +
-  Node.js producer) needs to populate them in lockstep with a CH migration.
-- **Mount the trained `model.ubj`.** Pipeline assumes a serialized booster is
-  available at `SESSION_INTERESTINGNESS_MODEL_PATH` (the runtime is in place;
-  this is purely a deployment concern — bake the file into the image or
-  mount it via a config volume / sidecar).
+- **Extend the feature set.** The committed `model.ubj` was trained on the
+  36 features the live `session_replay_features` DDL exposes today. To add
+  more (e.g. `*_path_visit_count`, `network_4xx_count`, `mutation_count`,
+  `unique_form_field_count`), they need to land in
+  `posthog/session_recordings/sql/session_replay_feature_sql.py` (CH
+  migration + Kafka MV) first, then a retrained `model.ubj` + matching
+  changes to `sql.py`/`FEATURE_RANGES` get gated by `test_sql_alignment.py`.
 - **Integration test for `score_chunk_activity`.** Unit coverage exists for
   `validate_features` and `scorer` (load + predict + thread safety + range
   guards). The end-to-end activity flow against real CH is still untested;

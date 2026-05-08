@@ -1,22 +1,13 @@
 """Shared fixtures for the interestingness_scoring_sweep tests.
 
-Only fixtures that don't need xgboost live here so the module imports cleanly
-on a plain `uv sync --dev` install. The xgboost-dependent fixtures
-(`trained_model_path`, `regression_model_path`) live alongside their only
-consumer in `test_scorer.py`, which carries a module-level
-`pytest.importorskip("xgboost")` — xgboost is in the `interestingness-scoring`
-dependency group, kept off the default worker image to avoid pulling
-nvidia-nccl-cu12 (~322 MB).
+The xgboost-dependent fixtures (`trained_model_path`, `regression_model_path`)
+live alongside their only consumer in `test_scorer.py`.
 
 The booster is the source of truth for `feature_names` in production. Tests
 that exercise `validate_features` / `feature_matrix` without a real booster
 use `feature_names_for_tests` (= `tuple(FEATURE_RANGES.keys())`) — the
 runtime range contract doubles as the test schema, which keeps the two
 in lockstep without a separate hard-coded list.
-
-To run the full suite (including `test_scorer.py`) locally:
-
-    uv sync --group interestingness-scoring
 """
 
 from __future__ import annotations

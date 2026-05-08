@@ -27,8 +27,10 @@ Idempotency guarantees:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import cast
 
+import numpy as np
+import pandas as pd
 import structlog
 from asgiref.sync import sync_to_async
 from temporalio import activity
@@ -48,7 +50,6 @@ from posthog.temporal.session_replay.interestingness_scoring_sweep.constants imp
     TARGET_CHUNK_SIZE,
 )
 from posthog.temporal.session_replay.interestingness_scoring_sweep.features import (
-    ID_COLUMNS,
     MODEL_FEATURE_SCHEMA_VERSION,
     FeatureValidationError,
     validate_features,
@@ -70,10 +71,13 @@ logger = structlog.get_logger(__name__)
 
 
 def _count_unscored_in_one_bucket(lookback_days: int, of_chunks: int) -> int:
-    rows = sync_execute(
-        interestingness_scoring_sweep_sql.count_unscored_sql(),
-        {"lookback_days": lookback_days, "of_chunks": of_chunks},
-        settings={"max_execution_time": CH_FEATURE_QUERY_TIMEOUT_S},
+    rows = cast(
+        list[tuple[int]],
+        sync_execute(
+            interestingness_scoring_sweep_sql.count_unscored_sql(),
+            {"lookback_days": lookback_days, "of_chunks": of_chunks},
+            settings={"max_execution_time": CH_FEATURE_QUERY_TIMEOUT_S},
+        ),
     )
     return int(rows[0][0]) if rows else 0
 
@@ -120,32 +124,28 @@ async def list_chunks_activity(_inputs: ScoreSessionsBatchInputs) -> ListChunksR
 # --------------------------------------------------------------------------- #
 
 
-def _fetch_features_dataframe(spec: ChunkSpec) -> Any:
-    """Run the feature SELECT and return a pandas DataFrame.
-
-    Imported lazily to keep workers that don't run scoring (e.g., per-team
-    summarization workers on the same image) from paying pandas's import cost
-    and to avoid importing heavy ML deps at module load time on workers that
-    don't pull this task queue.
-    """
-    import pandas as pd  # noqa: PLC0415  (intentional: lazy import, see docstring)
-
-    rows, column_metadata = sync_execute(
-        interestingness_scoring_sweep_sql.fetch_features_sql(),
-        {
-            "lookback_days": spec.lookback_days,
-            "of_chunks": spec.of_chunks,
-            "chunk_id": spec.chunk_id,
-            "chunk_size": spec.chunk_size,
-        },
-        settings={"max_execution_time": CH_FEATURE_QUERY_TIMEOUT_S},
-        with_column_types=True,
+def _fetch_features_dataframe(spec: ChunkSpec) -> pd.DataFrame:
+    """Run the feature SELECT and return a pandas DataFrame."""
+    result = cast(
+        tuple[list[tuple], list[tuple[str, str]]],
+        sync_execute(
+            interestingness_scoring_sweep_sql.fetch_features_sql(),
+            {
+                "lookback_days": spec.lookback_days,
+                "of_chunks": spec.of_chunks,
+                "chunk_id": spec.chunk_id,
+                "chunk_size": spec.chunk_size,
+            },
+            settings={"max_execution_time": CH_FEATURE_QUERY_TIMEOUT_S},
+            with_column_types=True,
+        ),
     )
+    rows, column_metadata = result
     columns = [name for name, _type in column_metadata]
-    return pd.DataFrame(rows, columns=columns)
+    return pd.DataFrame(rows, columns=pd.Index(columns))
 
 
-def _publish_scores(df: Any, scores: Any) -> int:
+def _publish_scores(df: pd.DataFrame, scores: np.ndarray) -> int:
     """Produce one Kafka message per scored session and flush before returning.
 
     Per-row produce keeps the activity's failure mode dead simple: a crash
@@ -163,14 +163,16 @@ def _publish_scores(df: Any, scores: Any) -> int:
     workflow as `ChunkResult.scored`.
     """
     producer = ClickhouseProducer()
+    team_ids = df["team_id"].to_numpy()
+    session_ids = df["session_id_v7"].to_numpy()
     rows_published = 0
-    for row, score in zip(df[list(ID_COLUMNS)].itertuples(index=False), scores, strict=True):
+    for team_id, session_id, score in zip(team_ids, session_ids, scores, strict=True):
         producer.produce(
             sql=INSERT_RAW_SESSIONS_V3_INTERESTINGNESS_SCORE_SQL,
             topic=KAFKA_CLICKHOUSE_RAW_SESSIONS_V3_INTERESTINGNESS_SCORE,
             data={
-                "team_id": int(row.team_id),
-                "session_id_v7": str(int(row.session_id_v7)),
+                "team_id": int(team_id),
+                "session_id_v7": str(int(session_id)),
                 "interestingness_score": float(score),
             },
         )
