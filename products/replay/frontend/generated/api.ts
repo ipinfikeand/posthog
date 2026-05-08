@@ -18,6 +18,8 @@ import type {
     SessionRecordingPlaylistsListParams,
     SessionRecordingsListParams,
     SessionSummariesApi,
+    SessionSummarySearchRequestApi,
+    SessionSummarySearchResponseApi,
 } from './api.schemas'
 
 // https://stackoverflow.com/questions/49579094/typescript-conditional-types-filter-out-readonly-properties-pick-only-requir/49579497#49579497
@@ -37,13 +39,13 @@ type NonReadonly<T> = [T] extends [UnionToIntersection<T>]
       }
     : DistributeReadOnlyOverUnions<T>
 
+/**
+ * Generate AI individual summary for each session, without grouping.
+ */
 export const getCreateSessionSummariesIndividuallyUrl = (projectId: string) => {
     return `/api/environments/${projectId}/session_summaries/create_session_summaries_individually/`
 }
 
-/**
- * Generate AI individual summary for each session, without grouping.
- */
 export const createSessionSummariesIndividually = async (
     projectId: string,
     sessionSummariesApi: SessionSummariesApi,
@@ -57,6 +59,29 @@ export const createSessionSummariesIndividually = async (
     })
 }
 
+/**
+ * Semantic search across AI-generated session recording segment summaries. Finds recordings where user behavior matches a natural language query. Only searches recordings that have been previously summarized via the video-based summarization path.
+ */
+export const getSearchSessionSummariesUrl = (projectId: string) => {
+    return `/api/environments/${projectId}/session_summaries/search_summaries/`
+}
+
+export const searchSessionSummaries = async (
+    projectId: string,
+    sessionSummarySearchRequestApi: SessionSummarySearchRequestApi,
+    options?: RequestInit
+): Promise<SessionSummarySearchResponseApi> => {
+    return apiMutator<SessionSummarySearchResponseApi>(getSearchSessionSummariesUrl(projectId), {
+        ...options,
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(sessionSummarySearchRequestApi),
+    })
+}
+
+/**
+ * Override list to include synthetic playlists
+ */
 export const getSessionRecordingPlaylistsListUrl = (
     projectId: string,
     params?: SessionRecordingPlaylistsListParams
@@ -76,9 +101,6 @@ export const getSessionRecordingPlaylistsListUrl = (
         : `/api/projects/${projectId}/session_recording_playlists/`
 }
 
-/**
- * Override list to include synthetic playlists
- */
 export const sessionRecordingPlaylistsList = async (
     projectId: string,
     params?: SessionRecordingPlaylistsListParams,
@@ -99,7 +121,7 @@ export const getSessionRecordingPlaylistsCreateUrl = (projectId: string) => {
 
 export const sessionRecordingPlaylistsCreate = async (
     projectId: string,
-    sessionRecordingPlaylistApi?: NonReadonly<SessionRecordingPlaylistApi>,
+    sessionRecordingPlaylistApi: NonReadonly<SessionRecordingPlaylistApi>,
     options?: RequestInit
 ): Promise<SessionRecordingPlaylistApi> => {
     return apiMutator<SessionRecordingPlaylistApi>(getSessionRecordingPlaylistsCreateUrl(projectId), {
@@ -132,7 +154,7 @@ export const getSessionRecordingPlaylistsUpdateUrl = (projectId: string, shortId
 export const sessionRecordingPlaylistsUpdate = async (
     projectId: string,
     shortId: string,
-    sessionRecordingPlaylistApi?: NonReadonly<SessionRecordingPlaylistApi>,
+    sessionRecordingPlaylistApi: NonReadonly<SessionRecordingPlaylistApi>,
     options?: RequestInit
 ): Promise<SessionRecordingPlaylistApi> => {
     return apiMutator<SessionRecordingPlaylistApi>(getSessionRecordingPlaylistsUpdateUrl(projectId, shortId), {
@@ -150,7 +172,7 @@ export const getSessionRecordingPlaylistsPartialUpdateUrl = (projectId: string, 
 export const sessionRecordingPlaylistsPartialUpdate = async (
     projectId: string,
     shortId: string,
-    patchedSessionRecordingPlaylistApi?: NonReadonly<PatchedSessionRecordingPlaylistApi>,
+    patchedSessionRecordingPlaylistApi: NonReadonly<PatchedSessionRecordingPlaylistApi>,
     options?: RequestInit
 ): Promise<SessionRecordingPlaylistApi> => {
     return apiMutator<SessionRecordingPlaylistApi>(getSessionRecordingPlaylistsPartialUpdateUrl(projectId, shortId), {
@@ -161,13 +183,13 @@ export const sessionRecordingPlaylistsPartialUpdate = async (
     })
 }
 
+/**
+ * Hard delete of this model is not allowed. Use a patch API call to set "deleted" to true
+ */
 export const getSessionRecordingPlaylistsDestroyUrl = (projectId: string, shortId: string) => {
     return `/api/projects/${projectId}/session_recording_playlists/${shortId}/`
 }
 
-/**
- * Hard delete of this model is not allowed. Use a patch API call to set "deleted" to true
- */
 export const sessionRecordingPlaylistsDestroy = async (
     projectId: string,
     shortId: string,
@@ -206,7 +228,7 @@ export const sessionRecordingPlaylistsRecordingsCreate = async (
     projectId: string,
     shortId: string,
     sessionRecordingId: string,
-    sessionRecordingPlaylistApi?: NonReadonly<SessionRecordingPlaylistApi>,
+    sessionRecordingPlaylistApi: NonReadonly<SessionRecordingPlaylistApi>,
     options?: RequestInit
 ): Promise<void> => {
     return apiMutator<void>(getSessionRecordingPlaylistsRecordingsCreateUrl(projectId, shortId, sessionRecordingId), {
@@ -286,7 +308,7 @@ export const getSessionRecordingsUpdateUrl = (projectId: string, id: string) => 
 export const sessionRecordingsUpdate = async (
     projectId: string,
     id: string,
-    sessionRecordingApi?: NonReadonly<SessionRecordingApi>,
+    sessionRecordingApi: NonReadonly<SessionRecordingApi>,
     options?: RequestInit
 ): Promise<SessionRecordingApi> => {
     return apiMutator<SessionRecordingApi>(getSessionRecordingsUpdateUrl(projectId, id), {
@@ -304,7 +326,7 @@ export const getSessionRecordingsPartialUpdateUrl = (projectId: string, id: stri
 export const sessionRecordingsPartialUpdate = async (
     projectId: string,
     id: string,
-    patchedSessionRecordingApi?: NonReadonly<PatchedSessionRecordingApi>,
+    patchedSessionRecordingApi: NonReadonly<PatchedSessionRecordingApi>,
     options?: RequestInit
 ): Promise<SessionRecordingApi> => {
     return apiMutator<SessionRecordingApi>(getSessionRecordingsPartialUpdateUrl(projectId, id), {

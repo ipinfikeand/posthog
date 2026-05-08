@@ -135,11 +135,8 @@ export const ConversationsTicketsPartialUpdateBody = /* @__PURE__ */ zod
             .describe(
                 'Ticket priority: low, medium, or high. Null if unset.\n\n* `low` - Low\n* `medium` - Medium\n* `high` - High'
             ),
-        sla_due_at: zod.iso
-            .datetime({ offset: true })
-            .nullish()
-            .describe('SLA deadline set via workflows. Null means no SLA.'),
-        snoozed_until: zod.iso.datetime({ offset: true }).nullish(),
+        sla_due_at: zod.iso.datetime({}).nullish().describe('SLA deadline set via workflows. Null means no SLA.'),
+        snoozed_until: zod.iso.datetime({}).nullish(),
         tags: zod.array(zod.unknown()).optional(),
     })
     .describe('Serializer mixin that handles tags for objects.')

@@ -194,8 +194,8 @@ export const ExperimentsCreateBody = /* @__PURE__ */ zod
             .max(experimentsCreateBodyDescriptionMax)
             .nullish()
             .describe('Description of the experiment hypothesis and expected outcomes.'),
-        start_date: zod.iso.datetime({ offset: true }).nullish(),
-        end_date: zod.iso.datetime({ offset: true }).nullish(),
+        start_date: zod.iso.datetime({}).nullish(),
+        end_date: zod.iso.datetime({}).nullish(),
         feature_flag_key: zod
             .string()
             .describe(
@@ -1886,8 +1886,8 @@ export const ExperimentsPartialUpdateBody = /* @__PURE__ */ zod
             .max(experimentsPartialUpdateBodyDescriptionMax)
             .nullish()
             .describe('Description of the experiment hypothesis and expected outcomes.'),
-        start_date: zod.iso.datetime({ offset: true }).nullish(),
-        end_date: zod.iso.datetime({ offset: true }).nullish(),
+        start_date: zod.iso.datetime({}).nullish(),
+        end_date: zod.iso.datetime({}).nullish(),
         feature_flag_key: zod
             .string()
             .optional()
@@ -3631,8 +3631,8 @@ export const ExperimentsDuplicateCreateBody = /* @__PURE__ */ zod
             .max(experimentsDuplicateCreateBodyDescriptionMax)
             .nullish()
             .describe('Description of the experiment hypothesis and expected outcomes.'),
-        start_date: zod.iso.datetime({ offset: true }).nullish(),
-        end_date: zod.iso.datetime({ offset: true }).nullish(),
+        start_date: zod.iso.datetime({}).nullish(),
+        end_date: zod.iso.datetime({}).nullish(),
         feature_flag_key: zod
             .string()
             .describe(
