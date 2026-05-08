@@ -19,18 +19,18 @@ export type AccountApiProperties = {
     csm?: {
         id: number
         email: string
-    } | null | null
+    } | null
     /** @nullable */
     account_executive?: {
         id: number
         email: string
-    } | null | null
+    } | null
     /** @nullable */
     account_owner?: {
         id: number
         email: string
-    } | null | null
-} | null | null
+    } | null
+} | null
 
 export interface AccountApi {
     readonly id: string

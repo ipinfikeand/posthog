@@ -55,36 +55,36 @@ export namespace Schemas {
       csm?: {
       id: number;
       email: string;
-    } | null | null;
+    } | null;
       /** @nullable */
       account_executive?: {
       id: number;
       email: string;
-    } | null | null;
+    } | null;
       /** @nullable */
       account_owner?: {
       id: number;
       email: string;
-    } | null | null;
-    } | null | null;
+    } | null;
+    } | null;
 
     export interface Account {
       readonly id: string;
       /**
-       * Human-readable name of the account.
-       * @maxLength 400
-       */
+         * Human-readable name of the account.
+         * @maxLength 400
+         */
       name: string;
       /**
-       * Identifier for the account in an external system (e.g. CRM ID). Optional.
-       * @maxLength 400
-       * @nullable
-       */
+         * Identifier for the account in an external system (e.g. CRM ID). Optional.
+         * @maxLength 400
+         * @nullable
+         */
       external_id?: string | null;
       /**
-       * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
-       * @nullable
-       */
+         * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+         * @nullable
+         */
       properties?: AccountProperties;
       readonly created_at: string;
       /** @nullable */
@@ -24070,36 +24070,36 @@ export namespace Schemas {
       csm?: {
       id: number;
       email: string;
-    } | null | null;
+    } | null;
       /** @nullable */
       account_executive?: {
       id: number;
       email: string;
-    } | null | null;
+    } | null;
       /** @nullable */
       account_owner?: {
       id: number;
       email: string;
-    } | null | null;
-    } | null | null;
+    } | null;
+    } | null;
 
     export interface PatchedAccount {
       readonly id?: string;
       /**
-       * Human-readable name of the account.
-       * @maxLength 400
-       */
+         * Human-readable name of the account.
+         * @maxLength 400
+         */
       name?: string;
       /**
-       * Identifier for the account in an external system (e.g. CRM ID). Optional.
-       * @maxLength 400
-       * @nullable
-       */
+         * Identifier for the account in an external system (e.g. CRM ID). Optional.
+         * @maxLength 400
+         * @nullable
+         */
       external_id?: string | null;
       /**
-       * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
-       * @nullable
-       */
+         * Typed account properties: group_type_index, group_keys, and assignment fields (csm, account_executive, account_owner). Defaults to an empty object. Unknown keys are rejected.
+         * @nullable
+         */
       properties?: PatchedAccountProperties;
       readonly created_at?: string;
       /** @nullable */
