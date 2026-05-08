@@ -87,12 +87,12 @@ export const SessionRecordingPlaylistsCreateBody = /* @__PURE__ */ zod.object({
         ),
     type: zod
         .union([
-            zod.enum(['collection', 'filters']).describe('* `collection` - Collection\n* `filters` - Filters'),
+            zod.enum(['collection', 'filters']).describe('\* `collection` - Collection\n\* `filters` - Filters'),
             zod.null(),
         ])
         .optional()
         .describe(
-            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n* `collection` - Collection\n* `filters` - Filters"
+            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n\* `collection` - Collection\n\* `filters` - Filters"
         ),
     _create_in_folder: zod.string().optional(),
 })
@@ -119,12 +119,12 @@ export const SessionRecordingPlaylistsUpdateBody = /* @__PURE__ */ zod.object({
         ),
     type: zod
         .union([
-            zod.enum(['collection', 'filters']).describe('* `collection` - Collection\n* `filters` - Filters'),
+            zod.enum(['collection', 'filters']).describe('\* `collection` - Collection\n\* `filters` - Filters'),
             zod.null(),
         ])
         .optional()
         .describe(
-            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n* `collection` - Collection\n* `filters` - Filters"
+            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n\* `collection` - Collection\n\* `filters` - Filters"
         ),
     _create_in_folder: zod.string().optional(),
 })
@@ -151,12 +151,12 @@ export const SessionRecordingPlaylistsPartialUpdateBody = /* @__PURE__ */ zod.ob
         ),
     type: zod
         .union([
-            zod.enum(['collection', 'filters']).describe('* `collection` - Collection\n* `filters` - Filters'),
+            zod.enum(['collection', 'filters']).describe('\* `collection` - Collection\n\* `filters` - Filters'),
             zod.null(),
         ])
         .optional()
         .describe(
-            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n* `collection` - Collection\n* `filters` - Filters"
+            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n\* `collection` - Collection\n\* `filters` - Filters"
         ),
     _create_in_folder: zod.string().optional(),
 })
@@ -183,12 +183,12 @@ export const SessionRecordingPlaylistsRecordingsCreateBody = /* @__PURE__ */ zod
         ),
     type: zod
         .union([
-            zod.enum(['collection', 'filters']).describe('* `collection` - Collection\n* `filters` - Filters'),
+            zod.enum(['collection', 'filters']).describe('\* `collection` - Collection\n\* `filters` - Filters'),
             zod.null(),
         ])
         .optional()
         .describe(
-            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n* `collection` - Collection\n* `filters` - Filters"
+            "Playlist type: 'collection' for manually curated recordings, 'filters' for saved filter views. Required on create, cannot be changed after.\n\n\* `collection` - Collection\n\* `filters` - Filters"
         ),
     _create_in_folder: zod.string().optional(),
 })
@@ -203,10 +203,10 @@ export const SessionRecordingsUpdateBody = /* @__PURE__ */ zod.object({
                 .unknown()
                 .optional()
                 .describe('Key-value map of person properties set via $set and $set_once operations.'),
-            created_at: zod.iso.datetime({}).describe('When this person was first seen (ISO 8601).'),
+            created_at: zod.iso.datetime({ offset: true }).describe('When this person was first seen (ISO 8601).'),
             uuid: zod.uuid().describe('Unique identifier (UUID) for this person.'),
             last_seen_at: zod.iso
-                .datetime({})
+                .datetime({ offset: true })
                 .nullable()
                 .describe('Timestamp of the last event from this person, or null.'),
         })
@@ -223,10 +223,10 @@ export const SessionRecordingsPartialUpdateBody = /* @__PURE__ */ zod.object({
                 .unknown()
                 .optional()
                 .describe('Key-value map of person properties set via $set and $set_once operations.'),
-            created_at: zod.iso.datetime({}).describe('When this person was first seen (ISO 8601).'),
+            created_at: zod.iso.datetime({ offset: true }).describe('When this person was first seen (ISO 8601).'),
             uuid: zod.uuid().describe('Unique identifier (UUID) for this person.'),
             last_seen_at: zod.iso
-                .datetime({})
+                .datetime({ offset: true })
                 .nullable()
                 .describe('Timestamp of the last event from this person, or null.'),
         })

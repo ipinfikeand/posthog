@@ -320,7 +320,10 @@ export const AdvancedActivityLogsListQueryParams = /* @__PURE__ */ zod.object({
         .describe(
             'JSON-encoded map of `detail` field paths to {operation, value} filters. Allowed operations: exact, contains, in.'
         ),
-    end_date: zod.iso.datetime({}).optional().describe('Upper bound on `created_at` (inclusive), ISO-8601.'),
+    end_date: zod.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe('Upper bound on `created_at` (inclusive), ISO-8601.'),
     hogql_filter: zod.string().optional().describe('Reserved for future HogQL-based filtering.'),
     is_system: zod.boolean().nullish().describe('When set, filters rows authored by the system (no user).'),
     item_ids: zod
@@ -345,7 +348,10 @@ export const AdvancedActivityLogsListQueryParams = /* @__PURE__ */ zod.object({
         .default(advancedActivityLogsListQueryScopesDefault)
         .describe('Filter by activity scopes (e.g. "FeatureFlag", "Insight").'),
     search_text: zod.string().optional().describe('Free-text search across the `detail` JSON column.'),
-    start_date: zod.iso.datetime({}).optional().describe('Lower bound on `created_at` (inclusive), ISO-8601.'),
+    start_date: zod.iso
+        .datetime({ offset: true })
+        .optional()
+        .describe('Lower bound on `created_at` (inclusive), ISO-8601.'),
     team_ids: zod
         .array(zod.number())
         .default(advancedActivityLogsListQueryTeamIdsDefault)

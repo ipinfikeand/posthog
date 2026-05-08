@@ -32628,22 +32628,22 @@ export namespace Schemas {
 
     export interface SessionSummarySearchRequest {
       /**
-       * Natural language search query to find similar session recording segments (e.g. 'user struggled with checkout').
-       * @maxLength 1000
-       */
+         * Natural language search query to find similar session recording segments (e.g. 'user struggled with checkout').
+         * @maxLength 1000
+         */
       query: string;
       /** Start of the date range to search within, as a relative date string (e.g. '-7d', '-30d') or ISO 8601 date. Defaults to '-30d'. */
       date_from?: string;
       /**
-       * End of the date range to search within, as a relative date string or ISO 8601 date. Defaults to now.
-       * @nullable
-       */
+         * End of the date range to search within, as a relative date string or ISO 8601 date. Defaults to now.
+         * @nullable
+         */
       date_to?: string | null;
       /**
-       * Maximum number of results to return (1-50, default 10).
-       * @minimum 1
-       * @maximum 50
-       */
+         * Maximum number of results to return (1-50, default 10).
+         * @minimum 1
+         * @maximum 50
+         */
       limit?: number;
     }
 
@@ -32655,14 +32655,14 @@ export namespace Schemas {
       /** Cosine distance between the search query and this segment (0 = identical meaning, lower = more similar). */
       distance: number;
       /**
-       * Start time of the segment within the recording, in milliseconds from recording start.
-       * @nullable
-       */
+         * Start time of the segment within the recording, in milliseconds from recording start.
+         * @nullable
+         */
       segment_start_time?: number | null;
       /**
-       * End time of the segment within the recording, in milliseconds from recording start.
-       * @nullable
-       */
+         * End time of the segment within the recording, in milliseconds from recording start.
+         * @nullable
+         */
       segment_end_time?: number | null;
       /** Whether a full AI-generated summary exists for this session (available via session-recording-summarize). */
       has_full_summary: boolean;
