@@ -177,10 +177,7 @@ CREATE TABLE IF NOT EXISTS {table_name}
     -- Replay
     has_replay_events SimpleAggregateFunction(max, Boolean),
 
-    -- Interestingness score, written by the Temporal session-interestingness scoring sweep.
-    -- max() is null-safe: scoring re-runs (or the original score-less event MV row) merge
-    -- to the highest non-null score, which is fine because the sweep is idempotent and any
-    -- second pass that produces a different value is the new model winning over the old one.
+    -- Interestingness score between 0 and 1 filled in by posthog/temporal/session_replay/interestingness_scoring_sweep
     interestingness_score SimpleAggregateFunction(max, Nullable(Float32))
 ) ENGINE = {engine}
 """
