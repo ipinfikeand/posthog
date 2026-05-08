@@ -6,6 +6,7 @@ import {
     SignalsAgentMemoryCreateBody,
     SignalsAgentMemoryDeleteBody,
     SignalsAgentMemoryListQueryParams,
+    SignalsAgentProjectProfileGetQueryParams,
     SignalsAgentRunsFindingsCreateBody,
     SignalsAgentRunsFindingsCreateParams,
     SignalsAgentRunsListQueryParams,
@@ -236,7 +237,7 @@ const signalsAgentMemoryList = (): ToolBase<
     },
 })
 
-const SignalsAgentProjectProfileGetSchema = z.object({})
+const SignalsAgentProjectProfileGetSchema = SignalsAgentProjectProfileGetQueryParams
 
 const signalsAgentProjectProfileGet = (): ToolBase<
     typeof SignalsAgentProjectProfileGetSchema,
@@ -244,12 +245,14 @@ const signalsAgentProjectProfileGet = (): ToolBase<
 > => ({
     name: 'signals-agent-project-profile-get',
     schema: SignalsAgentProjectProfileGetSchema,
-    // eslint-disable-next-line no-unused-vars
     handler: async (context: Context, params: z.infer<typeof SignalsAgentProjectProfileGetSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const result = await context.api.request<Schemas.ProjectProfile>({
             method: 'GET',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/signals/agent/project_profile/current/`,
+            query: {
+                force_refresh: params.force_refresh,
+            },
         })
         return result
     },

@@ -34163,8 +34163,9 @@ export namespace Schemas {
      * Wire shape for the project profile returned by `signals-agent-harness-project-profile-list`.
 
     Read this once at the start of a run (after `skill-get`) to orient on the team. Cache
-    is per-team with a ~36h soft TTL; the response always reflects either the latest cached
-    profile or a freshly-built one if the cache was stale.
+    is per-team with a soft TTL (`PROFILE_TTL`); the response always reflects either the
+    latest cached profile or a freshly-built one if the cache was stale or the caller passed
+    `force_refresh=true`.
      */
     export interface ProjectProfile {
       /** UUID of the `SignalProjectProfile` row. */
@@ -47337,6 +47338,13 @@ export namespace Schemas {
      * ILIKE substring match against `content`. Omit to return the most recent entries.
      */
     text?: string;
+    };
+
+    export type SignalsAgentProjectProfileGetParams = {
+    /**
+     * When true, skip the cache and rebuild the profile from authoritative sources before responding. Use after seeding events, importing data, or any other change the caller knows just landed but hasn't surfaced through natural cache expiry yet. Concurrent forced rebuilds are still serialized by the team-keyed advisory lock — at most one extra `build_inventory` per simultaneous request.
+     */
+    force_refresh?: boolean;
     };
 
     export type SignalsAgentRunsListParams = {
