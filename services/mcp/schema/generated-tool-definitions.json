@@ -1,4 +1,84 @@
 {
+    "accounts-create": {
+        "description": "Create a new Customer Analytics account. An account is a logical container that can be linked to one or more groups (e.g. companies, workspaces) of the team's configured account group type. Provide `name` (required), optional `external_id` (CRM ID or similar), and optional `properties` to set the `group_type_index` and `group_keys` the account is attached to, plus assignments (`csm`, `account_executive`, `account_owner`). If `properties.group_keys` is non-empty, `properties.group_type_index` must also be set and must match the team's configured `account_group_type_index`.",
+        "category": "Customer analytics",
+        "feature": "customer_analytics",
+        "summary": "Create account",
+        "title": "Create account",
+        "required_scopes": ["account:write"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": false,
+            "openWorldHint": true,
+            "readOnlyHint": false
+        },
+        "feature_flag": "posthog-csp"
+    },
+    "accounts-destroy": {
+        "description": "Permanently delete a Customer Analytics account by id. Detaches all linked groups; the underlying groups themselves are not deleted.",
+        "category": "Customer analytics",
+        "feature": "customer_analytics",
+        "summary": "Delete account",
+        "title": "Delete account",
+        "required_scopes": ["account:write"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": true,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": false
+        },
+        "feature_flag": "posthog-csp"
+    },
+    "accounts-list": {
+        "description": "List Customer Analytics accounts in the project, ordered by most recently created. Each result includes the account `id`, `name`, `external_id`, typed `properties` (group_type_index, group_keys, csm, account_executive, account_owner), and creation/update metadata. Use `accounts-retrieve` for a single account by id.",
+        "category": "Customer analytics",
+        "feature": "customer_analytics",
+        "summary": "List accounts",
+        "title": "List accounts",
+        "required_scopes": ["account:read"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+        },
+        "feature_flag": "posthog-csp"
+    },
+    "accounts-partial-update": {
+        "description": "Update fields on an existing Customer Analytics account. Accepts a subset of fields; unspecified fields are left unchanged. When updating `properties.group_keys`, the keys must belong to groups of the team's configured account group type and must not already be attached to a different account.",
+        "category": "Customer analytics",
+        "feature": "customer_analytics",
+        "summary": "Update account",
+        "title": "Update account",
+        "required_scopes": ["account:write"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": false
+        },
+        "feature_flag": "posthog-csp"
+    },
+    "accounts-retrieve": {
+        "description": "Fetch a single Customer Analytics account by id. Returns the full account including typed `properties` (group_type_index, group_keys, and csm/account_executive/account_owner assignments).",
+        "category": "Customer analytics",
+        "feature": "customer_analytics",
+        "summary": "Get account",
+        "title": "Get account",
+        "required_scopes": ["account:read"],
+        "new_mcp": true,
+        "annotations": {
+            "destructiveHint": false,
+            "idempotentHint": true,
+            "openWorldHint": true,
+            "readOnlyHint": true
+        },
+        "feature_flag": "posthog-csp"
+    },
     "action-create": {
         "description": "Create a new action in the project. Actions define reusable event triggers based on page views, clicks, form submissions, or custom events. Each action can have multiple steps (OR conditions). Use actions to create composite events for insights and funnels. Example: Create a 'Sign Up Click' action with steps matching button clicks on the signup page.",
         "category": "Actions",
