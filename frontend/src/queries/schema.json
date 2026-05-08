@@ -11116,7 +11116,14 @@
             "additionalProperties": false,
             "properties": {
                 "account_group_type_index": {
-                    "type": ["number", "null"]
+                    "anyOf": [
+                        {
+                            "$ref": "#/definitions/integer"
+                        },
+                        {
+                            "type": "null"
+                        }
+                    ]
                 },
                 "activity_event": {
                     "anyOf": [
