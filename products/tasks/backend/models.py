@@ -36,7 +36,7 @@ from posthog.temporal.oauth import PosthogMcpScopes
 
 from products.tasks.backend.constants import DEFAULT_TRUSTED_DOMAINS
 from products.tasks.backend.metrics import observe_task_run_created
-from products.tasks.backend.stream.redis_stream import publish_task_run_stream_event
+from products.tasks.backend.stream.redis_stream import publish_task_run_stream_complete, publish_task_run_stream_event
 
 logger = structlog.get_logger(__name__)
 
@@ -697,10 +697,13 @@ class TaskRun(models.Model):
         """Get the Temporal workflow ID for this task run."""
         return self.get_workflow_id(self.task_id, self.id)
 
-    def heartbeat_workflow(self) -> None:
+    def heartbeat_workflow(self, agent_active: bool = False) -> None:
+        if not agent_active:
+            return
+
         from django.core.cache import cache
 
-        cache_key = f"tasks:task_run:heartbeat:{self.id}"
+        cache_key = f"tasks:task_run:heartbeat:{self.id}:active"
         if not cache.add(cache_key, True, timeout=60):
             return
 
@@ -713,7 +716,7 @@ class TaskRun(models.Model):
         try:
             client = sync_connect()
             handle = client.get_workflow_handle(self.workflow_id)
-            asyncio.run(handle.signal(ProcessTaskWorkflow.heartbeat))
+            asyncio.run(handle.signal(ProcessTaskWorkflow.heartbeat, arg=agent_active))
         except Exception as e:
             logger.warning("task_run.heartbeat_failed", task_run_id=str(self.id), error=str(e))
 
@@ -921,6 +924,12 @@ class TaskRun(models.Model):
 
     def publish_stream_state_event(self) -> None:
         self.publish_stream_event(self.build_stream_state_event())
+        state = self.state or {}
+        sandbox_event_ingest_producer_started = (
+            state.get("sandbox_event_ingest_producer_started") is True if isinstance(state, dict) else False
+        )
+        if self.is_terminal and not sandbox_event_ingest_producer_started:
+            publish_task_run_stream_complete(str(self.id))
 
     def emit_console_event(self, level: LogLevel, message: str) -> None:
         """Emit a console-style log event in ACP notification format."""
