@@ -70,7 +70,7 @@ class AccountPropertiesValidationTest(BaseTest):
 
 class AccountSaveUniquenessTest(BaseTest):
     def test_save_rejects_creating_second_account_with_same_group_key(self):
-        Account.objects.create(
+        Account.objects.create(  # type: ignore[misc]
             team=self.team,
             name="First",
             properties={"group_type_index": 0, "group_keys": ["acme"]},
@@ -79,19 +79,19 @@ class AccountSaveUniquenessTest(BaseTest):
         with pytest.raises(
             DjangoValidationError, match=r"group_keys already attached to a different account: \['acme'\]"
         ):
-            Account.objects.create(
+            Account.objects.create(  # type: ignore[misc]
                 team=self.team,
                 name="Second",
                 properties={"group_type_index": 0, "group_keys": ["acme"]},
             )
 
     def test_save_rejects_moving_group_key_to_another_account(self):
-        first = Account.objects.create(
+        first = Account.objects.create(  # type: ignore[misc]
             team=self.team,
             name="First",
             properties={"group_type_index": 0, "group_keys": ["acme"]},
         )
-        second = Account.objects.create(
+        second = Account.objects.create(  # type: ignore[misc]
             team=self.team,
             name="Second",
             properties={"group_type_index": 0, "group_keys": ["beta"]},
@@ -118,7 +118,7 @@ class AccountSaveUniquenessTest(BaseTest):
         assert account.properties.group_keys == ["acme"]
 
     def test_save_allows_idempotent_resave(self):
-        account = Account.objects.create(
+        account = Account.objects.create(  # type: ignore[misc]
             team=self.team,
             name="Account",
             properties={"group_type_index": 0, "group_keys": ["acme"]},
@@ -132,13 +132,13 @@ class AccountSaveUniquenessTest(BaseTest):
 
     def test_save_allows_same_group_key_across_teams(self):
         other_team = Team.objects.create(organization=self.organization)
-        Account.objects.create(
+        Account.objects.create(  # type: ignore[misc]
             team=other_team,
             name="Other team",
             properties={"group_type_index": 0, "group_keys": ["acme"]},
         )
 
-        account = Account.objects.create(
+        account = Account.objects.create(  # type: ignore[misc]
             team=self.team,
             name="Same key, different team",
             properties={"group_type_index": 0, "group_keys": ["acme"]},
@@ -154,17 +154,17 @@ class AccountManagerTest(BaseTest):
         self.config.save()
 
     def test_filter_group_key__contains_any(self):
-        account = Account.objects.create(
+        account = Account.objects.create(  # type: ignore[misc]
             team=self.team, name="Existing", properties={"group_keys": ["foo"], "group_type_index": 0}
         )
-        another_account = Account.objects.create(
+        another_account = Account.objects.create(  # type: ignore[misc]
             team=self.team, name="Also existing", properties={"group_keys": ["bar"], "group_type_index": 0}
         )
-        Account.objects.create(
+        Account.objects.create(  # type: ignore[misc]
             team=self.team, name="Account", properties={"group_keys": ["henlo"], "group_type_index": 0}
         )
 
-        siblings = Account.objects.filter(team_id=self.team.pk, group_keys__contains_any=["foo", "bar", "baz"])
+        siblings = Account.objects.filter(team_id=self.team.pk, group_keys__contains_any=["foo", "bar", "baz"])  # type: ignore[misc]
 
         assert len(siblings) == 2
         assert account in siblings

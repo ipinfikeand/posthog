@@ -115,7 +115,7 @@ class Account(UUIDModel, CreatedMetaFields, UpdatedMetaFields):
         super().save(*args, **kwargs)
 
     def get_dupes(self, group_keys: list[str] | set[str]) -> models.QuerySet["Account"]:
-        return type(self).objects.filter(team_id=self.team_id, group_keys__contains_any=group_keys).exclude(pk=self.pk)
+        return type(self).objects.filter(team_id=self.team_id, group_keys__contains_any=group_keys).exclude(pk=self.pk)  # type: ignore[misc]
 
     def _validate_group_keys_unique_within_team(self) -> None:
         own_keys = set(self.properties.group_keys)
