@@ -512,6 +512,11 @@ tools:
             id:
                 description: Project ID, or `@current` to target the caller's active project.
                 cast: string-int
+            test_account_filters:
+                # The model stores this as a free-form JSON list, so the OpenAPI schema is
+                # `unknown`. Pin it to an explicit array-of-filters schema so agents stop
+                # passing a JSON-encoded string that corrupts the project settings.
+                input_schema: TestAccountFiltersSchema
     projects-create:
         operation: organizations_projects_create
         enabled: false

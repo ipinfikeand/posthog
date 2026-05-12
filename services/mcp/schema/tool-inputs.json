@@ -3236,6 +3236,54 @@
             "type": "object",
             "properties": {}
         },
+        "TestAccountFiltersSchema": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "anyOf": [
+                            {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "number"
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "number"
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "operator": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    }
+                },
+                "required": ["key"]
+            },
+            "description": "Property filters that identify internal/test traffic to exclude from insights. Pass an array of filter objects — never a JSON-encoded string. Each filter looks like { \"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\" }; to reference a cohort use { \"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\" }. Pass an empty array to clear all filters. Read the current value with project-get first."
+        },
         "UsageMetricFiltersSchema": {
             "anyOf": [
                 {

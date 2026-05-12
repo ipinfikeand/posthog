@@ -21,7 +21,7 @@ import {
 
 import { customProductsLogic } from '~/layout/panel-layout/ProjectTree/customProductsLogic'
 import { CurrencyCode, CustomerAnalyticsConfig, ProductKey } from '~/queries/schema/schema-general'
-import { CorrelationConfigType, ProjectType, TeamPublicType, TeamType } from '~/types'
+import { AnyPropertyFilter, CorrelationConfigType, ProjectType, TeamPublicType, TeamType } from '~/types'
 
 import { organizationLogic } from './organizationLogic'
 import { projectLogic } from './projectLogic'
@@ -47,6 +47,29 @@ const parseUpdatedAttributeName = (attr: keyof TeamType | null): string => {
 /** Return whether the provided value is a full TeamType object that's only available when authenticated. */
 export function isAuthenticatedTeam(team: TeamType | TeamPublicType | undefined | null): team is TeamType {
     return !!team && 'api_token' in team
+}
+
+/**
+ * `test_account_filters` is stored as a free-form JSON list, so a bad API write — e.g. an MCP
+ * client that passes a JSON-encoded string instead of an array — can leave it as a non-array.
+ * Coerce it back to an array (parsing a JSON string if that's what we got) so the rest of the app,
+ * which assumes `AnyPropertyFilter[]`, keeps working instead of crashing on `for...of` / `in`.
+ */
+export function sanitizeTestAccountFilters(value: unknown): AnyPropertyFilter[] {
+    if (Array.isArray(value)) {
+        return value as AnyPropertyFilter[]
+    }
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value)
+            if (Array.isArray(parsed)) {
+                return parsed as AnyPropertyFilter[]
+            }
+        } catch {
+            // Not valid JSON — fall through to the empty default.
+        }
+    }
+    return []
 }
 
 export interface FrequentMistakeAdvice {
@@ -323,7 +346,7 @@ export const teamLogic = kea<teamLogicType>([
                 }
                 const frequentMistakes: FrequentMistakeAdvice[] = []
 
-                for (const filter of currentTeam.test_account_filters || []) {
+                for (const filter of sanitizeTestAccountFilters(currentTeam.test_account_filters)) {
                     if (filter.key === 'email' && filter.type === 'event') {
                         frequentMistakes.push({
                             key: 'email',

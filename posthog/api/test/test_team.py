@@ -3281,6 +3281,46 @@ class TestTeamAPI(team_api_test_factory()):  # type: ignore
             [{"key": "email", "type": "person", "operator": "is_set"}],
         )
 
+    @parameterized.expand(
+        [
+            ("json_string", '[{"key": "email", "type": "person", "operator": "exact", "value": "posthog.com"}]'),
+            ("plain_string", "not-a-list"),
+            ("object", {"key": "email"}),
+            ("number", 1),
+        ]
+    )
+    def test_validate_test_account_filters_rejects_non_list(self, _name: str, test_account_filters: Any):
+        # A non-list value (e.g. an API/MCP client that passed a JSON-encoded string) must be rejected
+        # outright, regardless of the strict-validation flag — otherwise it corrupts the project settings.
+        original_test_account_filters = self.team.test_account_filters
+
+        response = self.client.patch(
+            f"/api/environments/{self.team.id}/",
+            {"test_account_filters": test_account_filters},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["attr"], "test_account_filters")
+        self.assertIn("test_account_filters must be a list of property filters.", response.json()["detail"])
+
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.test_account_filters, original_test_account_filters)
+
+    def test_validate_test_account_filters_rejects_non_list_via_project_endpoint(self):
+        original_test_account_filters = self.team.test_account_filters
+
+        response = self.client.patch(
+            f"/api/projects/{self.team.project_id}/",
+            {"test_account_filters": '[{"key": "email"}]'},
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.json()["attr"], "test_account_filters")
+        self.assertIn("test_account_filters must be a list of property filters.", response.json()["detail"])
+
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.test_account_filters, original_test_account_filters)
+
 
 class TestTeamSerializerHomeViewWins(APIBaseTest):
     def setUp(self):

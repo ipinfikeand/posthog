@@ -19,6 +19,7 @@ import {
     UsersPartialUpdateParams,
     UsersRetrieveParams,
 } from '@/generated/core/api'
+import { TestAccountFiltersSchema } from '@/schema/tool-inputs'
 import { castStringToInt } from '@/tools/cast-helpers'
 import { withPostHogUrl, omitResponseFields, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
@@ -60,6 +61,7 @@ const ProjectSettingsUpdateSchema = OrganizationsProjectsPartialUpdateParams.omi
                 "Project ID, or `@current` to target the caller's active project."
             )
         ),
+        test_account_filters: TestAccountFiltersSchema.optional(),
     })
 
 const projectSettingsUpdate = (): ToolBase<typeof ProjectSettingsUpdateSchema, Schemas.ProjectBackwardCompat> => ({

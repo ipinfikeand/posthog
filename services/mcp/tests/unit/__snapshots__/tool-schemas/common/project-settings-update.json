@@ -370,7 +370,52 @@
             "description": "Enables displaying surveys via posthog-js on allowed origins."
         },
         "test_account_filters": {
-            "description": "Filter groups that identify internal/test traffic to be excluded from insights."
+            "description": "Property filters that identify internal/test traffic to exclude from insights. Pass an array of filter objects — never a JSON-encoded string. Each filter looks like { \"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\" }; to reference a cohort use { \"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\" }. Pass an empty array to clear all filters. Read the current value with project-get first.",
+            "items": {
+                "properties": {
+                    "key": {
+                        "type": "string"
+                    },
+                    "operator": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "value": {
+                        "anyOf": [
+                            {
+                                "anyOf": [
+                                    {
+                                        "type": "string"
+                                    },
+                                    {
+                                        "type": "number"
+                                    },
+                                    {
+                                        "items": {
+                                            "type": "string"
+                                        },
+                                        "type": "array"
+                                    },
+                                    {
+                                        "items": {
+                                            "type": "number"
+                                        },
+                                        "type": "array"
+                                    }
+                                ]
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "required": ["key"],
+                "type": "object"
+            },
+            "type": "array"
         },
         "test_account_filters_default_checked": {
             "anyOf": [

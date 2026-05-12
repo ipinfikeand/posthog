@@ -391,6 +391,12 @@ test_account_filters_adapter = TypeAdapter(list[AnyPropertyFilter])
 
 
 def validate_test_account_filters(value: object) -> list[dict[str, object]]:
+    # The model stores this as a JSON list. Reject anything that isn't a list outright — e.g. an
+    # API or MCP client that passed a JSON-encoded string — so we never persist a value that
+    # crashes the settings UI and every query that reads `team.test_account_filters`.
+    if not isinstance(value, list):
+        raise exceptions.ValidationError("test_account_filters must be a list of property filters.")
+
     if not getattr(settings, "TEST_ACCOUNT_FILTERS_STRICT_VALIDATION_ENABLED", False):
         return cast(list[dict[str, object]], value)
 
