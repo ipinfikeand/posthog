@@ -28,8 +28,6 @@ export interface MaterializedColumnSlot {
     property_definition_details: PropertyDefinition
     /** Null while in PENDING — a column is only assigned once the weekly workflow runs. */
     slot_index: number | null
-    /** Set during compaction — ingestion dual-writes to both columns until the workflow swaps. */
-    compaction_target_slot_index: number | null
     state: MaterializedColumnSlotState
     backfill_temporal_run_id: string | null
     error_message: string | null

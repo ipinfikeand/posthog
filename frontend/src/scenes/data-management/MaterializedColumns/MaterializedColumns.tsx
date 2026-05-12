@@ -79,24 +79,7 @@ export function MaterializedColumns(): JSX.Element {
             if (slot.slot_index === null || slot.slot_index === undefined) {
                 return <span className="text-muted text-xs italic">awaiting next weekly cycle</span>
             }
-
-            const current = <span className="font-mono">{dmatColumnName(slot.slot_index)}</span>
-
-            // During compaction the slot is being repacked: ingestion writes to both columns,
-            // HogQL still reads the old one until the workflow swaps them after the mutation.
-            if (slot.compaction_target_slot_index !== null && slot.compaction_target_slot_index !== undefined) {
-                return (
-                    <Tooltip title="Compaction in flight: ingestion is dual-writing to both columns. HogQL keeps reading the old column until the workflow swaps them after the historical backfill mutation completes.">
-                        <div className="font-mono text-xs">
-                            {current}
-                            <span className="mx-1 text-muted">→</span>
-                            <span>{dmatColumnName(slot.compaction_target_slot_index)}</span>
-                        </div>
-                    </Tooltip>
-                )
-            }
-
-            return current
+            return <span className="font-mono">{dmatColumnName(slot.slot_index)}</span>
         },
     }
 
