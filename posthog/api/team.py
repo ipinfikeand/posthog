@@ -24,7 +24,7 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from posthog.schema import AttributionMode, HogQLQueryModifiers
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
-from posthog.api.shared import TeamBasicSerializer
+from posthog.api.shared import TEST_ACCOUNT_FILTERS_HELP_TEXT, TeamBasicSerializer, TestAccountFiltersField
 from posthog.api.utils import action
 from posthog.auth import OAuthAccessTokenAuthentication, PersonalAPIKeyAuthentication, SessionAuthentication
 from posthog.constants import AvailableFeature
@@ -494,6 +494,7 @@ class TeamSerializer(serializers.ModelSerializer, UserPermissionsSerializerMixin
     marketing_analytics_config = TeamMarketingAnalyticsConfigSerializer(required=False)
     customer_analytics_config = TeamCustomerAnalyticsConfigSerializer(required=False)
     base_currency = serializers.ChoiceField(choices=CURRENCY_CODE_CHOICES, default=DEFAULT_CURRENCY)
+    test_account_filters = TestAccountFiltersField(required=False, help_text=TEST_ACCOUNT_FILTERS_HELP_TEXT)
 
     class Meta:
         model = Team

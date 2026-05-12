@@ -233,9 +233,29 @@ export const OrganizationsProjectsCreateBody = /* @__PURE__ */ zod
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -425,9 +445,29 @@ export const OrganizationsProjectsUpdateBody = /* @__PURE__ */ zod
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -619,9 +659,29 @@ export const OrganizationsProjectsPartialUpdateBody = /* @__PURE__ */ zod
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -813,9 +873,29 @@ export const OrganizationsProjectsAddProductIntentPartialUpdateBody = /* @__PURE
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -1019,9 +1099,29 @@ export const OrganizationsProjectsChangeOrganizationCreateBody = /* @__PURE__ */
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -1221,9 +1321,29 @@ export const OrganizationsProjectsCompleteProductOnboardingPartialUpdateBody = /
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -1437,9 +1557,29 @@ export const OrganizationsProjectsDeleteSecretTokenBackupPartialUpdateBody = /* 
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -1653,9 +1793,29 @@ export const OrganizationsProjectsGenerateConversationsPublicTokenCreateBody = /
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -1867,9 +2027,29 @@ export const OrganizationsProjectsResetTokenPartialUpdateBody = /* @__PURE__ */ 
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()
@@ -2061,9 +2241,29 @@ export const OrganizationsProjectsRotateSecretTokenPartialUpdateBody = /* @__PUR
             .describe('When true, PostHog drops the IP address from every ingested event.'),
         completed_snippet_onboarding: zod.boolean().optional(),
         test_account_filters: zod
-            .unknown()
+            .array(
+                zod.object({
+                    key: zod.string().describe('Property name to filter on.'),
+                    type: zod
+                        .string()
+                        .optional()
+                        .describe('Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.'),
+                    operator: zod
+                        .string()
+                        .optional()
+                        .describe('Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.'),
+                    value: zod
+                        .unknown()
+                        .optional()
+                        .describe(
+                            'Value to compare against — a string, number, array, or null depending on the operator.'
+                        ),
+                })
+            )
             .optional()
-            .describe('Filter groups that identify internal\/test traffic to be excluded from insights.'),
+            .describe(
+                'Property filters that identify internal\/test traffic to be excluded from insights. Each entry is a filter object like {\"key\": \"email\", \"value\": \"@your-company.com\", \"operator\": \"not_icontains\", \"type\": \"person\"}; reference a cohort with {\"key\": \"id\", \"value\": <cohortId>, \"operator\": \"not_in\", \"type\": \"cohort\"}. Pass an empty array to clear all filters.'
+            ),
         test_account_filters_default_checked: zod
             .boolean()
             .nullish()

@@ -5,6 +5,7 @@ This module contains serializers that are used across other serializers for nest
 import copy
 from typing import Any, Optional
 
+from drf_spectacular.utils import extend_schema_field
 from opentelemetry import trace
 from rest_framework import serializers
 from rest_framework.fields import SkipField
@@ -16,6 +17,47 @@ from posthog.models.organization import OrganizationMembership
 from posthog.models.project import Project
 
 tracer = trace.get_tracer(__name__)
+
+TEST_ACCOUNT_FILTERS_HELP_TEXT = (
+    "Property filters that identify internal/test traffic to be excluded from insights. "
+    'Each entry is a filter object like {"key": "email", "value": "@your-company.com", '
+    '"operator": "not_icontains", "type": "person"}; reference a cohort with '
+    '{"key": "id", "value": <cohortId>, "operator": "not_in", "type": "cohort"}. '
+    "Pass an empty array to clear all filters."
+)
+
+
+@extend_schema_field(
+    {
+        "type": "array",
+        "description": TEST_ACCOUNT_FILTERS_HELP_TEXT,
+        "items": {
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Property name to filter on."},
+                "type": {
+                    "type": "string",
+                    "description": "Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`.",
+                },
+                "operator": {
+                    "type": "string",
+                    "description": "Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`.",
+                },
+                "value": {
+                    "description": "Value to compare against — a string, number, array, or null depending on the operator.",
+                },
+            },
+            "required": ["key"],
+        },
+    }
+)
+class TestAccountFiltersField(serializers.JSONField):
+    """Typed `JSONField` for `Team.test_account_filters`.
+
+    The column is free-form JSON, but every consumer (settings UI, HogQL filters, MCP tools) expects
+    a list of property filters. Declaring it with this field gives the generated API/MCP schemas an
+    explicit array shape instead of an opaque `unknown`, so clients stop sending a JSON-encoded string.
+    """
 
 
 class UserBasicSerializer(serializers.ModelSerializer):

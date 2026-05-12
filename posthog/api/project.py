@@ -15,7 +15,11 @@ from rest_framework.permissions import BasePermission, IsAuthenticated
 from posthog.schema import ProductKey
 
 from posthog.api.routing import TeamAndOrgViewSetMixin
-from posthog.api.shared import ProjectBackwardCompatBasicSerializer
+from posthog.api.shared import (
+    TEST_ACCOUNT_FILTERS_HELP_TEXT,
+    ProjectBackwardCompatBasicSerializer,
+    TestAccountFiltersField,
+)
 from posthog.api.team import (
     TEAM_CONFIG_FIELDS_SET,
     TeamSerializer,
@@ -90,6 +94,8 @@ class ProjectBackwardCompatSerializer(ProjectBackwardCompatBasicSerializer, User
     # These are @property attrs on Team, not Django model fields — declare explicitly so drf-spectacular can resolve them
     default_modifiers = serializers.DictField(read_only=True)  # Compat with TeamSerializer
     person_on_events_querying_enabled = serializers.BooleanField(read_only=True)  # Compat with TeamSerializer
+    # Typed so the generated API/MCP schemas describe the filter array rather than an opaque `unknown`.
+    test_account_filters = TestAccountFiltersField(required=False, help_text=TEST_ACCOUNT_FILTERS_HELP_TEXT)
 
     def validate_app_urls(self, value: list[str | None] | None) -> list[str] | None:
         if value is None:
@@ -317,9 +323,6 @@ class ProjectBackwardCompatSerializer(ProjectBackwardCompatBasicSerializer, User
                 "help_text": (
                     "Ordered list of person properties used to render a human-friendly display name in the UI."
                 )
-            },
-            "test_account_filters": {
-                "help_text": "Filter groups that identify internal/test traffic to be excluded from insights."
             },
             "test_account_filters_default_checked": {
                 "help_text": "When true, new insights default to excluding internal/test users."

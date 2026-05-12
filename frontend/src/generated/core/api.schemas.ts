@@ -372,6 +372,17 @@ export interface PaginatedProjectBackwardCompatBasicListApi {
 
 export type ProjectBackwardCompatApiGroupTypesItem = { [key: string]: unknown }
 
+export type ProjectBackwardCompatApiTestAccountFiltersItem = {
+    /** Property name to filter on. */
+    key: string
+    /** Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`. */
+    type?: string
+    /** Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`. */
+    operator?: string
+    /** Value to compare against — a string, number, array, or null depending on the operator. */
+    value?: unknown
+}
+
 export type ProjectBackwardCompatApiDefaultModifiers = { [key: string]: unknown }
 
 export type ProjectBackwardCompatApiProductIntentsItem = {
@@ -604,8 +615,8 @@ export interface ProjectBackwardCompatApi {
     anonymize_ips?: boolean
     completed_snippet_onboarding?: boolean
     readonly ingested_event: boolean
-    /** Filter groups that identify internal/test traffic to be excluded from insights. */
-    test_account_filters?: unknown
+    /** Property filters that identify internal/test traffic to be excluded from insights. Each entry is a filter object like {"key": "email", "value": "@your-company.com", "operator": "not_icontains", "type": "person"}; reference a cohort with {"key": "id", "value": <cohortId>, "operator": "not_in", "type": "cohort"}. Pass an empty array to clear all filters. */
+    test_account_filters?: ProjectBackwardCompatApiTestAccountFiltersItem[]
     /**
      * When true, new insights default to excluding internal/test users.
      * @nullable
@@ -1355,6 +1366,17 @@ export interface ProjectBackwardCompatApi {
 
 export type PatchedProjectBackwardCompatApiGroupTypesItem = { [key: string]: unknown }
 
+export type PatchedProjectBackwardCompatApiTestAccountFiltersItem = {
+    /** Property name to filter on. */
+    key: string
+    /** Filter kind, e.g. `person`, `event`, `event_feature`, `element`, or `cohort`. */
+    type?: string
+    /** Comparison operator, e.g. `not_icontains`, `not_in`, or `is_set`. */
+    operator?: string
+    /** Value to compare against — a string, number, array, or null depending on the operator. */
+    value?: unknown
+}
+
 export type PatchedProjectBackwardCompatApiDefaultModifiers = { [key: string]: unknown }
 
 export type PatchedProjectBackwardCompatApiProductIntentsItem = {
@@ -1400,8 +1422,8 @@ export interface PatchedProjectBackwardCompatApi {
     anonymize_ips?: boolean
     completed_snippet_onboarding?: boolean
     readonly ingested_event?: boolean
-    /** Filter groups that identify internal/test traffic to be excluded from insights. */
-    test_account_filters?: unknown
+    /** Property filters that identify internal/test traffic to be excluded from insights. Each entry is a filter object like {"key": "email", "value": "@your-company.com", "operator": "not_icontains", "type": "person"}; reference a cohort with {"key": "id", "value": <cohortId>, "operator": "not_in", "type": "cohort"}. Pass an empty array to clear all filters. */
+    test_account_filters?: PatchedProjectBackwardCompatApiTestAccountFiltersItem[]
     /**
      * When true, new insights default to excluding internal/test users.
      * @nullable

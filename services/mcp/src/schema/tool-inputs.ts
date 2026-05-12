@@ -26,17 +26,6 @@ export const ExternalDataSourceTypeSchema = z
         'The source type name (e.g. "Postgres", "MySQL", "Stripe"). Use external-data-sources-wizard to see available types and their required fields.'
     )
 
-// `test_account_filters` is stored as a free-form JSON list on the Team/Project model, so the
-// OpenAPI schema types it as `unknown`. Agents frequently respond to that by passing a
-// JSON-encoded string, which the API stores verbatim and then breaks every UI that expects an
-// array. Replacing the field with this explicit array schema makes the tool reject the string
-// and tells the agent exactly what shape to send.
-export const TestAccountFiltersSchema = z
-    .array(PropertyFilter)
-    .describe(
-        'Property filters that identify internal/test traffic to exclude from insights. Pass an array of filter objects — never a JSON-encoded string. Each filter looks like { "key": "email", "value": "@your-company.com", "operator": "not_icontains", "type": "person" }; to reference a cohort use { "key": "id", "value": <cohortId>, "operator": "not_in", "type": "cohort" }. Pass an empty array to clear all filters. Read the current value with project-get first.'
-    )
-
 const UsageMetricEventsFilterEntrySchema = z.object({
     id: z.string().describe('Event name (e.g. "$pageview").'),
     name: z.string().optional(),
