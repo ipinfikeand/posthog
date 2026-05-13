@@ -3283,35 +3283,39 @@ class TestTeamAPI(team_api_test_factory()):  # type: ignore
 
     @parameterized.expand(
         [
-            ("json_string", '[{"key": "email", "type": "person", "operator": "exact", "value": "posthog.com"}]'),
+            ("environments_endpoint", "/api/environments/{team_id}/"),
+            ("projects_endpoint", "/api/projects/{project_id}/"),
+        ]
+    )
+    def test_validate_test_account_filters_parses_json_encoded_list_string(self, _name: str, path_template: str):
+        # An MCP/AI agent's most common slip-up is JSON.stringify-ing the array it just read.
+        # We meet that halfway — if the string parses to a list, the API stores the list.
+        path = path_template.format(team_id=self.team.id, project_id=self.team.project_id)
+        expected_filters = [{"key": "email", "type": "person", "operator": "exact", "value": "posthog.com"}]
+
+        response = self.client.patch(path, {"test_account_filters": json.dumps(expected_filters)})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["test_account_filters"], expected_filters)
+        self.team.refresh_from_db()
+        self.assertEqual(self.team.test_account_filters, expected_filters)
+
+    @parameterized.expand(
+        [
             ("plain_string", "not-a-list"),
+            ("json_object_string", '{"key": "email"}'),
             ("object", {"key": "email"}),
             ("number", 1),
         ]
     )
     def test_validate_test_account_filters_rejects_non_list(self, _name: str, test_account_filters: Any):
-        # A non-list value (e.g. an API/MCP client that passed a JSON-encoded string) must be rejected
-        # outright, regardless of the strict-validation flag — otherwise it corrupts the project settings.
+        # Anything that isn't a list (and doesn't parse to one) must be rejected outright,
+        # regardless of the strict-validation flag — otherwise it corrupts the project settings.
         original_test_account_filters = self.team.test_account_filters
 
         response = self.client.patch(
             f"/api/environments/{self.team.id}/",
             {"test_account_filters": test_account_filters},
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.json()["attr"], "test_account_filters")
-        self.assertIn("test_account_filters must be a list of property filters.", response.json()["detail"])
-
-        self.team.refresh_from_db()
-        self.assertEqual(self.team.test_account_filters, original_test_account_filters)
-
-    def test_validate_test_account_filters_rejects_non_list_via_project_endpoint(self):
-        original_test_account_filters = self.team.test_account_filters
-
-        response = self.client.patch(
-            f"/api/projects/{self.team.project_id}/",
-            {"test_account_filters": '[{"key": "email"}]'},
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
