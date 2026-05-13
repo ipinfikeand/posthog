@@ -3,7 +3,6 @@ This module contains serializers that are used across other serializers for nest
 """
 
 import copy
-import json
 from typing import Any, Optional
 
 from drf_spectacular.utils import extend_schema_field
@@ -59,20 +58,6 @@ class TestAccountFiltersField(serializers.JSONField):
     a list of property filters. Declaring it with this field gives the generated API/MCP schemas an
     explicit array shape instead of an opaque `unknown`, so clients stop sending a JSON-encoded string.
     """
-
-    def to_internal_value(self, data):
-        # Be forgiving with clients that pass a JSON-encoded string instead of the array — an
-        # MCP/AI agent's most common slip-up is JSON.stringify-ing a value it just read. If the
-        # string parses to a list, treat it as the array the caller intended; otherwise let
-        # `validate_test_account_filters` reject it with a clear error.
-        if isinstance(data, str):
-            try:
-                parsed = json.loads(data)
-            except (TypeError, ValueError):
-                parsed = None
-            if isinstance(parsed, list):
-                data = parsed
-        return super().to_internal_value(data)
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
