@@ -9,7 +9,7 @@ import { TaxonomicFilterGroupType } from 'lib/components/TaxonomicFilter/types'
 import { TeamMembershipLevel } from 'lib/constants'
 import { LemonBanner } from 'lib/lemon-ui/LemonBanner'
 import { eventUsageLogic } from 'lib/utils/eventUsageLogic'
-import { sanitizeTestAccountFilters, teamLogic } from 'scenes/teamLogic'
+import { teamLogic } from 'scenes/teamLogic'
 
 import { cohortsModel } from '~/models/cohortsModel'
 import { groupsModel } from '~/models/groupsModel'
@@ -35,7 +35,7 @@ function createTestAccountFilterWarningLabels(
         PropertyOperator.In,
     ]
     const positiveFilters = []
-    for (const filter of sanitizeTestAccountFilters(currentTeam.test_account_filters)) {
+    for (const filter of currentTeam.test_account_filters || []) {
         if ('operator' in filter && !!filter.operator && positiveFilterOperators.includes(filter.operator)) {
             positiveFilters.push(filter)
         }
@@ -73,12 +73,6 @@ function TestAccountFiltersConfig(): JSX.Element {
     const testAccountFilterWarningLabels = createTestAccountFilterWarningLabels(currentTeam, cohortsById)
 
     const { groupsTaxonomicTypes } = useValues(groupsModel)
-
-    const rawTestAccountFilters = currentTeam?.test_account_filters
-    const testAccountFilters = sanitizeTestAccountFilters(rawTestAccountFilters)
-    // A non-array value here means a bad write (e.g. an API client that sent a JSON-encoded string).
-    const testAccountFiltersAreMalformed =
-        !!currentTeam && rawTestAccountFilters != null && !Array.isArray(rawTestAccountFilters)
 
     const handleChange = (filters: AnyPropertyFilter[]): void => {
         updateCurrentTeam({ test_account_filters: filters })
@@ -125,20 +119,10 @@ function TestAccountFiltersConfig(): JSX.Element {
                         </ul>
                     </LemonBanner>
                 )}
-                {testAccountFiltersAreMalformed && (
-                    <LemonBanner type="error" className="m-2">
-                        <p>
-                            The internal and test user filters stored for this project aren't in the expected format —
-                            this usually means they were written by an API or MCP client that sent a JSON-encoded string
-                            instead of a list of filters. The editor below has been reset to an empty list; set the
-                            filters you want and save to replace the invalid value.
-                        </p>
-                    </LemonBanner>
-                )}
                 {currentTeam && (
                     <PropertyFilters
                         pageKey="testaccountfilters"
-                        propertyFilters={testAccountFilters}
+                        propertyFilters={currentTeam?.test_account_filters}
                         onChange={handleChange}
                         taxonomicGroupTypes={[
                             TaxonomicFilterGroupType.EventProperties,

@@ -5,32 +5,9 @@ import { expectLogic } from 'kea-test-utils'
 import { initKeaTests } from '~/test/init'
 import { AppContext } from '~/types'
 
-import { sanitizeTestAccountFilters, teamLogic } from './teamLogic'
+import { teamLogic } from './teamLogic'
 
 describe('teamLogic', () => {
-    describe('sanitizeTestAccountFilters', () => {
-        it('returns arrays unchanged', () => {
-            const filters = [{ key: 'email', value: '@x.com', operator: 'not_icontains', type: 'person' }]
-            expect(sanitizeTestAccountFilters(filters)).toBe(filters)
-        })
-
-        it('parses a JSON-encoded array string', () => {
-            const filters = [{ key: 'email', value: '@x.com', operator: 'not_icontains', type: 'person' }]
-            expect(sanitizeTestAccountFilters(JSON.stringify(filters))).toEqual(filters)
-        })
-
-        it.each([
-            ['undefined', undefined],
-            ['null', null],
-            ['a plain string', 'not-a-list'],
-            ['a JSON object string', '{"key":"email"}'],
-            ['an object', { key: 'email' }],
-            ['a number', 1],
-        ])('returns [] for %s', (_label, value) => {
-            expect(sanitizeTestAccountFilters(value)).toEqual([])
-        })
-    })
-
     let logic: ReturnType<typeof teamLogic.build>
 
     describe('when team is loaded', () => {
