@@ -93,6 +93,7 @@ import { MarketingAnalyticsSettingsWrapper } from './environment/MarketingAnalyt
 import MCPServerSettings from './environment/MCPServerSettings'
 import { PathCleaningFiltersConfig } from './environment/PathCleaningFiltersConfig'
 import { PersonDisplayNameProperties } from './environment/PersonDisplayNameProperties'
+import { PostHogCodeDiscordIntegration } from './environment/PostHogCodeDiscordIntegration'
 import { PostHogCodeSlackIntegration } from './environment/PostHogCodeSlackIntegration'
 import { ReplayIntegrations } from './environment/ReplayIntegrations'
 import { SDKSetupInstructions } from './environment/SDKSetupInstructions'
@@ -353,6 +354,11 @@ export const SETTINGS_MAP: SettingSection[] = [
                 id: 'integration-posthog-code-slack',
                 title: 'Slack integration',
                 component: <PostHogCodeSlackIntegration />,
+            },
+            {
+                id: 'integration-posthog-code-discord',
+                title: 'Discord integration',
+                component: <PostHogCodeDiscordIntegration />,
             },
         ],
     },
@@ -1364,7 +1370,11 @@ export const SETTINGS_MAP: SettingSection[] = [
                 id: 'integration-other',
                 title: 'Other integrations',
                 description: 'Browse and manage additional third-party integrations.',
-                component: <IntegrationsList omitKinds={['slack', 'slack-posthog-code', 'github', 'linear']} />,
+                component: (
+                    <IntegrationsList
+                        omitKinds={['slack', 'slack-posthog-code', 'discord-posthog-code', 'github', 'linear']}
+                    />
+                ),
                 keywords: ['integration', 'connect', 'third-party', 'app'],
             },
             {
