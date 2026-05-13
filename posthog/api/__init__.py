@@ -11,6 +11,7 @@ from posthog.api import (
     my_notifications,
     project,
     user_integration,
+    user_sms_integration,
 )
 from posthog.api.batch_imports import BatchImportViewSet
 from posthog.api.csp_reporting import CSPReportingViewSet
@@ -746,6 +747,12 @@ users_router.register(
     r"integrations",
     user_integration.UserIntegrationViewSet,
     "user_integration",
+    ["uuid"],
+)
+users_router.register(
+    r"sms",
+    user_sms_integration.UserSMSIntegrationViewSet,
+    "user_sms_integration",
     ["uuid"],
 )
 router.register(
