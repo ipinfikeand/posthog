@@ -26,7 +26,7 @@ import { formatAiErrorForDisplay, normalizeMessage, normalizeMessages } from './
 // the user-visible reply is structurally identified rather than positional,
 // the "last generation" heuristic can pick the wrong event. The intended
 // escape hatch is an opt-in `$ai_user_visible: true` convention on the SDK
-// side; until that lands, the "Show reasoning" affordance is the user's fallback.
+// side; until that lands, the "Show steps" affordance is the user's fallback.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -121,7 +121,7 @@ export function messageSignature(message: CompatMessage): string {
  * `$ai_user_visible: true` convention or a non-positional selector for
  * LangGraph-style runs would change *how* this function picks but not what it
  * promises. Wrong for cases where the final generation is e.g. a
- * logging/cleanup call; the "Show reasoning" affordance is the user's
+ * logging/cleanup call; the "Show steps" affordance is the user's
  * fallback.
  */
 export function pickUserVisibleTurn(trace: LLMTrace | undefined): LLMTraceEvent | undefined {
@@ -283,12 +283,14 @@ function collectDistinctErrors(events: LLMTraceEvent[]): SessionTurnError[] {
     const ordered: SessionTurnError[] = []
     for (const event of sorted) {
         // PostHog SDKs serialize booleans as strings, so `$ai_is_error: 'false'` is a
-        // truthy non-empty string. Check both the canonical 'true' form and the raw
-        // boolean to avoid surfacing non-errors as errors.
-        const isError =
-            event.properties.$ai_is_error === true ||
-            event.properties.$ai_is_error === 'true' ||
-            event.properties.$ai_error
+        // truthy non-empty string. Explicit non-error takes priority over `$ai_error`
+        // presence — some SDKs record a partial error object during a retry that
+        // ultimately resolves successfully, then mark the final event as non-error.
+        const isErrorFlag = event.properties.$ai_is_error
+        if (isErrorFlag === false || isErrorFlag === 'false') {
+            continue
+        }
+        const isError = isErrorFlag === true || isErrorFlag === 'true' || event.properties.$ai_error
         if (!isError) {
             continue
         }
