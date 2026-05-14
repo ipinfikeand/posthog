@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("posthog", "1153_alter_integration_kind_discord"),
+        ("posthog", "1155_alter_integration_kind_discord"),
     ]
 
     operations = [
