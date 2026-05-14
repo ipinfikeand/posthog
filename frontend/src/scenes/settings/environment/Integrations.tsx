@@ -29,25 +29,45 @@ export function GitLabIntegration(): JSX.Element {
     )
 }
 
+const ERROR_TRACKING_INTEGRATIONS_NEXT = urls.settings('environment-error-tracking', 'error-tracking-integrations')
+
 export function LinearIntegration(): JSX.Element {
-    return <OAuthIntegration kind="linear" connectText="Connect workspace" />
+    return <OAuthIntegration kind="linear" connectText="Connect workspace" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
+}
+
+export function LinearAgentIntegration(): JSX.Element {
+    return (
+        <OAuthIntegration
+            kind="linear-agent"
+            connectText="Connect workspace"
+            next={urls.settings('environment-integrations', 'integration-linear-agent')}
+        />
+    )
 }
 
 export function GithubIntegration(): JSX.Element {
-    return <OAuthIntegration kind="github" connectText="Connect organization" />
+    return <OAuthIntegration kind="github" connectText="Connect organization" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
 }
 
 export function JiraIntegration(): JSX.Element {
-    return <OAuthIntegration kind="jira" connectText="Connect site" />
+    return <OAuthIntegration kind="jira" connectText="Connect site" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
 }
 
-const OAuthIntegration = ({ kind, connectText }: { kind: IntegrationKind; connectText: string }): JSX.Element => {
+const OAuthIntegration = ({
+    kind,
+    connectText,
+    next,
+}: {
+    kind: IntegrationKind
+    connectText: string
+    next: string
+}): JSX.Element => {
     const restrictedReason = useRestrictedArea({
         scope: RestrictionScope.Project,
         minimumAccessLevel: TeamMembershipLevel.Admin,
     })
     const authorizationUrl = api.integrations.authorizeUrl({
-        next: urls.settings('environment-error-tracking', 'error-tracking-integrations'),
+        next,
         kind,
     })
 
