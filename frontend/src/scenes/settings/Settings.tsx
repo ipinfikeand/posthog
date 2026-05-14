@@ -182,7 +182,7 @@ export function Settings({
                                                 />
                                             }
                                         >
-                                            {section.group}
+                                            {section.groupTitle ?? section.group}
                                         </OptionButton>
                                     ),
                                     items: !isGroupCollapsed ? sectionsInGroup.map(buildSectionOption) : [],
