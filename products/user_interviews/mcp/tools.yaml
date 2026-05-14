@@ -174,13 +174,12 @@ tools:
             idempotent: true
         title: Semantic search across interview responses
         description: >
-            Search recorded user interviews by meaning, not keywords. Embeds the natural-language `query`
-            with the same model used to index transcripts and summaries, then returns the top matches by
-            cosine similarity. Each match is a single (interview, document_type) pair — an interview can
-            appear up to twice if both its transcript and summary score above other interviews. Use
-            `document_types` to restrict to just `transcript` or just `summary`. Filter by `topic_id` to
-            scope the search to a single interview topic. `limit` caps the number of returned matches
-            (1-50, default 10). Useful for surfacing relevant excerpts when the caller has a research
+            Search recorded user interviews by meaning, not keywords. Embeds the natural-language `query` with the same
+            model used to index transcripts and summaries, then returns the top matches by cosine similarity. Each match
+            is a single (interview, document_type) pair — an interview can appear up to twice if both its transcript and
+            summary score above other interviews. Use `document_types` to restrict to just `transcript` or just
+            `summary`. Filter by `topic_id` to scope the search to a single interview topic. `limit` caps the number of
+            returned matches (1-50, default 10). Useful for surfacing relevant excerpts when the caller has a research
             question rather than a known string to grep for.
         feature_flag: user-interviews
     user-interviews-update:
