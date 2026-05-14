@@ -10,6 +10,7 @@ from django.db import models
 from django.db.models import QuerySet
 from django.utils import timezone
 
+import structlog
 import posthoganalytics
 import posthoganalytics.ai.openai
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -29,12 +30,15 @@ from posthog.api.embedding_worker import generate_embedding
 from posthog.api.mixins import ValidatedRequest, validated_request
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.api.shared import UserBasicSerializer
+from posthog.clickhouse.query_tagging import Feature, Product, tag_queries
 from posthog.email import EmailMessage, is_email_available
 from posthog.models.sharing_configuration import SharingConfiguration
 from posthog.permissions import PostHogFeatureFlagPermission
 from posthog.utils import absolute_uri
 
 from .models import EmailWithDisplayNameValidator, IntervieweeContext, UserInterview, UserInterviewTopic
+
+logger = structlog.get_logger(__name__)
 
 elevenlabs_client = ElevenLabs()
 
@@ -241,6 +245,10 @@ SEARCH_EMBEDDING_MODEL = EmbeddingModelName.TEXT_EMBEDDING_3_LARGE_3072.value
 SEARCH_CONTENT_SNIPPET_LIMIT = 500
 SEARCH_MAX_LIMIT = 50
 SEARCH_DEFAULT_LIMIT = 10
+# Pathological-size guard for topic_id-scoped searches — a topic with more than this many
+# interviews ships a giant IN list to ClickHouse. Realistic topics are tiny (<100); the
+# cap exists to keep the worst case bounded.
+SEARCH_TOPIC_INTERVIEW_CAP = 1000
 
 
 class UserInterviewSearchRequestSerializer(serializers.Serializer):
@@ -341,18 +349,37 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         # rather than the embedding-time `metadata.topic_id` — UserInterview.topic is
         # nullable with on_delete=SET_NULL, so historical metadata can name a topic the
         # row no longer belongs to.
-        scoped_document_ids: set[str] | None = None
+        scoped_document_ids: list[str] | None = None
         if topic_id is not None:
-            scoped_document_ids = {
-                str(pk)
-                for pk in UserInterview.objects.filter(team_id=self.team_id, topic_id=topic_id).values_list(
-                    "id", flat=True
-                )
-            }
+            scoped_ids_qs = (
+                UserInterview.objects.filter(team_id=self.team_id, topic_id=topic_id)
+                .order_by("id")
+                .values_list("id", flat=True)[: SEARCH_TOPIC_INTERVIEW_CAP + 1]
+            )
+            scoped_document_ids = [str(pk) for pk in scoped_ids_qs]
             if not scoped_document_ids:
                 return response.Response(UserInterviewSearchResultSerializer([], many=True).data)
+            if len(scoped_document_ids) > SEARCH_TOPIC_INTERVIEW_CAP:
+                logger.warning(
+                    "user_interviews_search_topic_scope_capped",
+                    team_id=self.team_id,
+                    topic_id=str(topic_id),
+                    cap=SEARCH_TOPIC_INTERVIEW_CAP,
+                )
+                scoped_document_ids = scoped_document_ids[:SEARCH_TOPIC_INTERVIEW_CAP]
 
-        embedding_response = generate_embedding(self.team, query_str, model=SEARCH_EMBEDDING_MODEL)
+        try:
+            embedding_response = generate_embedding(self.team, query_str, model=SEARCH_EMBEDDING_MODEL)
+        except Exception:
+            logger.exception(
+                "user_interviews_search_embedding_failed",
+                team_id=self.team_id,
+                query_length=len(query_str),
+            )
+            return response.Response(
+                {"detail": "Embedding service is currently unavailable. Please retry shortly."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
         query_vector = embedding_response.embedding
 
         where_clauses = [
@@ -370,7 +397,7 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         }
         if scoped_document_ids is not None:
             where_clauses.append("document_id IN {scoped_document_ids}")
-            placeholders["scoped_document_ids"] = ast.Constant(value=sorted(scoped_document_ids))
+            placeholders["scoped_document_ids"] = ast.Constant(value=scoped_document_ids)
 
         # The embedding row is used only for ranking and routing. The snippet itself is
         # built from the current Postgres UserInterview field so edits/deletions to the
@@ -387,6 +414,7 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             LIMIT {{limit}}
         """
 
+        tag_queries(product=Product.USER_INTERVIEWS, feature=Feature.SEMANTIC_SEARCH)
         query_result = execute_hogql_query(
             query=hogql_query,
             team=self.team,

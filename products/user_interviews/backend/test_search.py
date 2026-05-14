@@ -281,6 +281,62 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
 
         self.assertEqual(UserInterviewViewSet.search.kwargs["required_scopes"], ["user_interview:read"])
 
+    @patch("products.user_interviews.backend.api.tag_queries")
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch("products.user_interviews.backend.api.generate_embedding")
+    def test_search_tags_clickhouse_query_for_attribution(self, mock_embed, mock_hogql, mock_tag):
+        from posthog.clickhouse.query_tagging import Feature, Product
+
+        mock_embed.return_value = self._embedding_response()
+        mock_hogql.return_value = self._hogql_rows([])
+
+        self.client.post(self._url(), {"query": "x"}, content_type="application/json")
+
+        mock_tag.assert_called_once_with(product=Product.USER_INTERVIEWS, feature=Feature.SEMANTIC_SEARCH)
+
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch(
+        "products.user_interviews.backend.api.generate_embedding",
+        side_effect=RuntimeError("embedding service down"),
+    )
+    def test_search_returns_502_when_embedding_service_fails(self, _mock_embed, mock_hogql):
+        response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("Embedding service", response.json()["detail"])
+        mock_hogql.assert_not_called()
+
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch("products.user_interviews.backend.api.generate_embedding")
+    def test_search_caps_scoped_document_ids_for_pathological_topic_size(self, mock_embed, mock_hogql):
+        from products.user_interviews.backend.api import SEARCH_TOPIC_INTERVIEW_CAP
+
+        mock_embed.return_value = self._embedding_response()
+        mock_hogql.return_value = self._hogql_rows([])
+        # Create enough interviews to exceed the cap. Generate them in a single batch.
+        UserInterview.objects.bulk_create(
+            [
+                UserInterview(
+                    team=self.team,
+                    topic=self.topic,
+                    interviewee_identifier=f"person-{i}@example.com",
+                    interviewee_emails=[f"person-{i}@example.com"],
+                    transcript="t",
+                    summary="s",
+                    created_by=self.user,
+                )
+                for i in range(SEARCH_TOPIC_INTERVIEW_CAP + 5)
+            ]
+        )
+
+        self.client.post(
+            self._url(),
+            {"query": "x", "topic_id": str(self.topic.id)},
+            content_type="application/json",
+        )
+
+        placeholders = mock_hogql.call_args.kwargs["placeholders"]
+        self.assertEqual(len(placeholders["scoped_document_ids"].value), SEARCH_TOPIC_INTERVIEW_CAP)
+
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")
     def test_search_does_not_leak_across_teams(self, mock_embed, mock_hogql):
