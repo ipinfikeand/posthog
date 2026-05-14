@@ -252,6 +252,7 @@ class UserInterviewSearchRequestSerializer(serializers.Serializer):
         child=serializers.ChoiceField(choices=list(SEARCH_DOCUMENT_TYPES)),
         required=False,
         allow_empty=False,
+        min_length=1,
         help_text=(
             "Which document types to search across. Omit to default to both "
             "`transcript` and `summary`. Pass a non-empty subset to restrict the search."

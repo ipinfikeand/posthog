@@ -93,14 +93,20 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
         self.assertEqual(embed_args[1], "is session replay slow?")
         self.assertEqual(embed_kwargs["model"], "text-embedding-3-large-3072")
 
+    @parameterized.expand(
+        [
+            ("distance_above_one_clamps_to_zero", 1.4, 0.0),
+            ("negative_distance_clamps_to_one", -0.01, 1.0),
+        ]
+    )
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")
-    def test_search_caps_similarity_at_zero(self, mock_embed, mock_hogql):
+    def test_search_clamps_similarity_to_unit_interval(self, _name, distance, expected, mock_embed, mock_hogql):
         mock_embed.return_value = self._embedding_response()
-        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", 1.4)])
+        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", distance)])
         response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json()[0]["similarity"], 0.0)
+        self.assertEqual(response.json()[0]["similarity"], expected)
 
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")

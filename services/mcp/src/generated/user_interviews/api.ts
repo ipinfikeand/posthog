@@ -185,9 +185,10 @@ export const UserInterviewsSearchCreateBody = /* @__PURE__ */ zod.object({
         .describe('Natural-language query to match semantically against interview transcripts and summaries.'),
     document_types: zod
         .array(zod.enum(['transcript', 'summary']).describe('* `transcript` - transcript\n* `summary` - summary'))
+        .min(1)
         .optional()
         .describe(
-            'Which document types to search across. Defaults to both `transcript` and `summary`. Pass a subset to restrict the search.'
+            'Which document types to search across. Omit to default to both `transcript` and `summary`. Pass a non-empty subset to restrict the search.'
         ),
     topic_id: zod
         .uuid()

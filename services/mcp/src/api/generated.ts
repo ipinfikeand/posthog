@@ -35627,7 +35627,10 @@ export namespace Schemas {
          * @maxLength 2000
          */
       query: string;
-      /** Which document types to search across. Defaults to both `transcript` and `summary`. Pass a subset to restrict the search. */
+      /**
+         * Which document types to search across. Omit to default to both `transcript` and `summary`. Pass a non-empty subset to restrict the search.
+         * @minItems 1
+         */
       document_types?: UserInterviewSearchDocumentTypeEnum[];
       /**
          * Optional. Restrict results to interviews belonging to a specific UserInterviewTopic.
