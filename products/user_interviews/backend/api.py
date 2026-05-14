@@ -336,6 +336,7 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         methods=["post"],
         url_path="search",
         pagination_class=None,
+        parser_classes=[JSONParser],
         required_scopes=["user_interview:read"],
     )
     def search(self, request: ValidatedRequest, *args: Any, **kwargs: Any) -> response.Response:

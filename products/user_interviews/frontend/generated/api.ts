@@ -504,21 +504,10 @@ export const userInterviewsSearchCreate = async (
     userInterviewSearchRequestApi: UserInterviewSearchRequestApi,
     options?: RequestInit
 ): Promise<UserInterviewSearchResultApi[]> => {
-    const formData = new FormData()
-    formData.append(`query`, userInterviewSearchRequestApi.query)
-    if (userInterviewSearchRequestApi.document_types !== undefined) {
-        userInterviewSearchRequestApi.document_types.forEach((value) => formData.append(`document_types`, value))
-    }
-    if (userInterviewSearchRequestApi.topic_id !== undefined && userInterviewSearchRequestApi.topic_id !== null) {
-        formData.append(`topic_id`, userInterviewSearchRequestApi.topic_id)
-    }
-    if (userInterviewSearchRequestApi.limit !== undefined) {
-        formData.append(`limit`, userInterviewSearchRequestApi.limit.toString())
-    }
-
     return apiMutator<UserInterviewSearchResultApi[]>(getUserInterviewsSearchCreateUrl(projectId), {
         ...options,
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json', ...options?.headers },
+        body: JSON.stringify(userInterviewSearchRequestApi),
     })
 }
