@@ -19,20 +19,25 @@ from posthog.models.user import User
 from posthog.redis import get_async_client
 from posthog.session_recordings.queries.session_replay_events import SessionReplayEvents
 
-from products.replay_vision.backend.models.replay_lens import LensModel, LensType, ReplayLens
+from products.replay_vision.backend.models.replay_lens import LensModel, LensProvider, LensType, ReplayLens
 from products.replay_vision.backend.models.replay_observation import (
     ObservationStatus,
     ObservationTrigger,
     ReplayObservation,
 )
 from products.replay_vision.backend.temporal import ApplyLensWorkflow
+from products.replay_vision.backend.temporal.activities.call_lens_provider import call_lens_provider_activity
+from products.replay_vision.backend.temporal.activities.cleanup_gemini_file import cleanup_gemini_file_activity
 from products.replay_vision.backend.temporal.activities.create_observation import create_observation_activity
+from products.replay_vision.backend.temporal.activities.emit_lens_event import emit_lens_event_activity
 from products.replay_vision.backend.temporal.activities.ensure_session_asset import ensure_session_asset_activity
 from products.replay_vision.backend.temporal.activities.fetch_session_events import fetch_session_events_activity
 from products.replay_vision.backend.temporal.activities.observation_state import (
     mark_observation_failed_activity,
     mark_observation_running_activity,
+    mark_observation_succeeded_activity,
 )
+from products.replay_vision.backend.temporal.activities.upload_video_to_gemini import upload_video_to_gemini_activity
 from products.replay_vision.backend.temporal.state import (
     StateActivitiesEnum,
     generate_state_key,
@@ -46,9 +51,12 @@ from products.replay_vision.backend.temporal.types import (
     EnsureSessionAssetInputs,
     EnsureSessionAssetOutput,
     FetchSessionEventsInputs,
+    LensCallOutput,
     LensLlmInputs,
     MarkObservationFailedInputs,
     MarkObservationRunningInputs,
+    MarkObservationSucceededInputs,
+    UploadedVideo,
 )
 
 
@@ -284,6 +292,37 @@ class TestObservationStateActivities:
         observation.refresh_from_db()
         assert observation.started_at == first_started_at
 
+    def test_mark_succeeded_stamps_lifecycle_metadata(self) -> None:
+        lens = _make_lens()
+        observation = _make_observation(lens, status=ObservationStatus.RUNNING, started_at=timezone.now())
+
+        mark_observation_succeeded_activity(
+            MarkObservationSucceededInputs(
+                observation_id=observation.id, model_used="gemini-3-flash", provider_used="google"
+            )
+        )
+
+        observation.refresh_from_db()
+        assert observation.status == ObservationStatus.SUCCEEDED
+        assert observation.model_used == "gemini-3-flash"
+        assert observation.provider_used == "google"
+        assert observation.completed_at is not None
+
+    def test_mark_succeeded_does_not_overwrite_terminal_status(self) -> None:
+        # Bounded UPDATE: failed/succeeded rows are sticky.
+        lens = _make_lens()
+        observation = _make_observation(
+            lens, status=ObservationStatus.FAILED, error_reason="prior", completed_at=timezone.now()
+        )
+
+        mark_observation_succeeded_activity(
+            MarkObservationSucceededInputs(observation_id=observation.id, model_used="late", provider_used="google")
+        )
+
+        observation.refresh_from_db()
+        assert observation.status == ObservationStatus.FAILED
+        assert observation.model_used == ""
+
 
 @pytest.mark.django_db(transaction=True)
 class TestFetchSessionEventsActivity:
@@ -303,7 +342,7 @@ class TestFetchSessionEventsActivity:
         observation_id = uuid.uuid4()
         start = dt.datetime(2026, 5, 12, 10, 0, 0, tzinfo=dt.UTC)
         end = dt.datetime(2026, 5, 12, 10, 5, 0, tzinfo=dt.UTC)
-        metadata = {"start_time": start, "end_time": end, "duration": 300}
+        metadata = {"start_time": start, "end_time": end, "duration": 300, "active_seconds": 200}
 
         mock_obj = self._make_session_replay_events_mock(
             metadata,
@@ -339,7 +378,7 @@ class TestFetchSessionEventsActivity:
         lens = await sync_to_async(_make_lens)()
         observation_id = uuid.uuid4()
         start = dt.datetime(2026, 5, 12, 10, 0, 0, tzinfo=dt.UTC)
-        metadata = {"start_time": start, "end_time": start, "duration": 0}
+        metadata = {"start_time": start, "end_time": start, "duration": 0, "active_seconds": 0}
         page_size = 3000
 
         full_page_rows = [("$pageview", start, f"sess-{i}") for i in range(page_size)]
@@ -410,6 +449,31 @@ class TestFetchSessionEventsActivity:
         mock_obj.get_events.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_raises_non_retryable_when_session_active_seconds_exceeds_max(self) -> None:
+        lens = await sync_to_async(_make_lens)()
+        observation_id = uuid.uuid4()
+        metadata = {
+            "start_time": dt.datetime(2026, 5, 12, tzinfo=dt.UTC),
+            "end_time": dt.datetime(2026, 5, 12, 2, tzinfo=dt.UTC),
+            "duration": 7200,
+            "active_seconds": 5000,  # over the 3600 cap
+        }
+        mock_obj = self._make_session_replay_events_mock(metadata, [(["event"], [("$pageview",)])])
+
+        with patch(
+            "products.replay_vision.backend.temporal.activities.fetch_session_events.SessionReplayEvents",
+            return_value=mock_obj,
+        ):
+            with pytest.raises(ApplicationError) as exc_info:
+                await fetch_session_events_activity(
+                    FetchSessionEventsInputs(
+                        observation_id=observation_id, team_id=lens.team_id, session_id="sess-long"
+                    )
+                )
+            assert exc_info.value.non_retryable is True
+            assert "5000" in str(exc_info.value)
+
+    @pytest.mark.asyncio
     async def test_raises_non_retryable_when_session_has_no_events(self) -> None:
         lens = await sync_to_async(_make_lens)()
         observation_id = uuid.uuid4()
@@ -417,6 +481,7 @@ class TestFetchSessionEventsActivity:
             "start_time": dt.datetime(2026, 5, 12, tzinfo=dt.UTC),
             "end_time": dt.datetime(2026, 5, 12, 0, 5, tzinfo=dt.UTC),
             "duration": 300,
+            "active_seconds": 200,
         }
         mock_obj = self._make_session_replay_events_mock(metadata, [([], [])])
 
@@ -508,6 +573,8 @@ def _build_inputs(**overrides: Any) -> ApplyLensInputs:
         "team_id": 1,
         "triggered_by": ObservationTrigger.ON_DEMAND,
         "triggered_by_user_id": None,
+        "model": LensModel.GEMINI_3_FLASH,
+        "provider": LensProvider.GOOGLE,
     }
     defaults.update(overrides)
     return ApplyLensInputs(**defaults)
@@ -550,29 +617,44 @@ async def _run_workflow(inputs: ApplyLensInputs, mocks: _WorkflowMocks, workflow
 
 
 @pytest.mark.asyncio
-async def test_apply_lens_workflow_drives_full_pipeline_with_stub_terminal() -> None:
+async def test_apply_lens_workflow_drives_full_success_pipeline() -> None:
     new_observation_id = uuid.uuid4()
+    model_output = {"verdict": True, "reasoning": "user exported", "confidence": 0.9}
     mocks = _WorkflowMocks(
         activity_results={
             create_observation_activity: CreateObservationOutput(observation_id=new_observation_id, was_created=True),
             ensure_session_asset_activity: EnsureSessionAssetOutput(asset_id=42),
+            upload_video_to_gemini_activity: UploadedVideo(
+                file_uri="gemini://files/x", mime_type="video/mp4", gemini_file_name="files/x"
+            ),
+            call_lens_provider_activity: LensCallOutput(
+                model_output=model_output, model_used="gemini-3-flash", provider_used="google"
+            ),
         },
     )
 
     inputs = _build_inputs(session_id="sess-1", team_id=99)
-    await _run_workflow(inputs, mocks, workflow_id="wf-stub-terminal")
+    await _run_workflow(inputs, mocks, workflow_id="wf-success")
 
     activity_order = [fn for fn, _ in mocks.activity_calls]
     assert activity_order[:2] == [create_observation_activity, mark_observation_running_activity]
     # fetch + ensure_asset run in parallel — order between them is non-deterministic.
     assert set(activity_order[2:4]) == {fetch_session_events_activity, ensure_session_asset_activity}
-    assert activity_order[4] == mark_observation_failed_activity
+    assert activity_order[4:] == [
+        upload_video_to_gemini_activity,
+        call_lens_provider_activity,
+        emit_lens_event_activity,
+        mark_observation_succeeded_activity,
+        cleanup_gemini_file_activity,
+    ]
     assert len(mocks.child_calls) == 1
     assert mocks.child_calls[0][1]["id"] == f"replay-vision-rasterize-99-sess-1-{inputs.lens_id}"
 
-    final_failed_input = mocks.activity_calls[-1][1]
-    assert final_failed_input.observation_id == new_observation_id
-    assert "stub" in final_failed_input.error_reason.lower()
+    emit_input = next(arg for fn, arg in mocks.activity_calls if fn is emit_lens_event_activity)
+    assert emit_input.model_output == model_output
+    assert emit_input.model_used == "gemini-3-flash"
+    cleanup_input = next(arg for fn, arg in mocks.activity_calls if fn is cleanup_gemini_file_activity)
+    assert cleanup_input.gemini_file_name == "files/x"
 
 
 @pytest.mark.asyncio

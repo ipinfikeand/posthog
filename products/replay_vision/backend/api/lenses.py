@@ -259,6 +259,8 @@ class ReplayLensViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
                     team_id=lens.team_id,
                     triggered_by=ObservationTrigger.ON_DEMAND,
                     triggered_by_user_id=user.id,
+                    model=lens.model,
+                    provider=lens.provider,
                 ),
                 id=workflow_id,
                 task_queue=settings.REPLAY_VISION_TASK_QUEUE,
