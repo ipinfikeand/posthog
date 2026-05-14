@@ -20,8 +20,13 @@ from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
 from rest_framework.request import Request
 
-from posthog.schema import ProductKey
+from posthog.schema import EmbeddingModelName, ProductKey
 
+from posthog.hogql import ast
+from posthog.hogql.query import execute_hogql_query
+
+from posthog.api.embedding_worker import generate_embedding
+from posthog.api.mixins import ValidatedRequest, validated_request
 from posthog.api.routing import TeamAndOrgViewSetMixin
 from posthog.api.shared import UserBasicSerializer
 from posthog.email import EmailMessage, is_email_available
@@ -231,6 +236,65 @@ Record the agreed-upon next steps, including any additional actions that need to
         return str(uuid4())
 
 
+SEARCH_DOCUMENT_TYPES = ("transcript", "summary")
+SEARCH_EMBEDDING_MODEL = EmbeddingModelName.TEXT_EMBEDDING_3_LARGE_3072.value
+SEARCH_CONTENT_SNIPPET_LIMIT = 500
+SEARCH_MAX_LIMIT = 50
+SEARCH_DEFAULT_LIMIT = 10
+
+
+class UserInterviewSearchRequestSerializer(serializers.Serializer):
+    query = serializers.CharField(
+        max_length=2000,
+        help_text="Natural-language query to match semantically against interview transcripts and summaries.",
+    )
+    document_types = serializers.ListField(
+        child=serializers.ChoiceField(choices=list(SEARCH_DOCUMENT_TYPES)),
+        required=False,
+        help_text=(
+            "Which document types to search across. Defaults to both "
+            "`transcript` and `summary`. Pass a subset to restrict the search."
+        ),
+    )
+    topic_id = serializers.UUIDField(
+        required=False,
+        allow_null=True,
+        help_text="Optional. Restrict results to interviews belonging to a specific UserInterviewTopic.",
+    )
+    limit = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=SEARCH_MAX_LIMIT,
+        help_text=(
+            f"Maximum number of matches to return (1-{SEARCH_MAX_LIMIT}). "
+            f"Defaults to {SEARCH_DEFAULT_LIMIT}. Two matches per interview are possible — "
+            "one for the transcript, one for the summary."
+        ),
+    )
+
+
+class UserInterviewSearchResultSerializer(serializers.Serializer):
+    interview_id = serializers.UUIDField(help_text="ID of the matched UserInterview.")
+    document_type = serializers.ChoiceField(
+        choices=list(SEARCH_DOCUMENT_TYPES),
+        help_text="Which document type matched — `transcript` is the raw conversation, `summary` is the AI-generated abstract.",
+    )
+    similarity = serializers.FloatField(
+        help_text="Cosine similarity in [0, 1]; higher is closer to the query. Computed as `1 - cosineDistance`.",
+    )
+    content_snippet = serializers.CharField(
+        help_text=f"Excerpt of the matched document (first {SEARCH_CONTENT_SNIPPET_LIMIT} characters).",
+    )
+    interviewee_identifier = serializers.CharField(
+        help_text="Email or PostHog distinct ID of the interviewee.",
+    )
+    topic_id = serializers.UUIDField(
+        allow_null=True,
+        help_text="ID of the UserInterviewTopic the interview was conducted for, or null if detached.",
+    )
+    created_at = serializers.DateTimeField(help_text="When the interview row was created.")
+
+
 @extend_schema(tags=[ProductKey.USER_INTERVIEWS])
 class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     scope_object = "user_interview"
@@ -239,6 +303,97 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, JSONParser]
     posthog_feature_flag = "user-interviews"
     permission_classes = [PostHogFeatureFlagPermission]
+
+    @validated_request(
+        request_serializer=UserInterviewSearchRequestSerializer,
+        responses={
+            200: OpenApiResponse(
+                response=UserInterviewSearchResultSerializer(many=True),
+                description="Matches ranked by cosine similarity (descending).",
+            ),
+        },
+        summary="Search interview responses by semantic similarity",
+        description=(
+            "Embed `query` with the same model used to index interview transcripts and summaries, "
+            "then return the top matches by cosine distance. Each match is a single (interview, "
+            "document_type) pair — an interview can appear up to twice if both its transcript and "
+            "summary score above other interviews. Useful for surfacing relevant interview snippets "
+            "in natural language, without exact keyword matches."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="search", pagination_class=None)
+    def search(self, request: ValidatedRequest, *args: Any, **kwargs: Any) -> response.Response:
+        body = request.validated_data
+        query_str: str = body["query"]
+        document_types: list[str] = body.get("document_types") or list(SEARCH_DOCUMENT_TYPES)
+        topic_id = body.get("topic_id")
+        limit: int = body.get("limit") or SEARCH_DEFAULT_LIMIT
+
+        embedding_response = generate_embedding(self.team, query_str, model=SEARCH_EMBEDDING_MODEL)
+        query_vector = embedding_response.embedding
+
+        where_clauses = [
+            "model_name = {model_name}",
+            "product = 'user_interviews'",
+            "team_id = {team_id}",
+            "document_type IN {document_types}",
+        ]
+        placeholders: dict[str, ast.Expr] = {
+            "embedding": ast.Constant(value=query_vector),
+            "model_name": ast.Constant(value=SEARCH_EMBEDDING_MODEL),
+            "team_id": ast.Constant(value=self.team_id),
+            "document_types": ast.Constant(value=document_types),
+            "limit": ast.Constant(value=limit),
+        }
+        if topic_id is not None:
+            where_clauses.append("JSONExtractString(metadata, 'topic_id') = {topic_id}")
+            placeholders["topic_id"] = ast.Constant(value=str(topic_id))
+
+        hogql_query = f"""
+            SELECT
+                document_id,
+                document_type,
+                content,
+                cosineDistance(embedding, {{embedding}}) AS distance
+            FROM document_embeddings
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY distance ASC
+            LIMIT {{limit}}
+        """
+
+        query_result = execute_hogql_query(
+            query=hogql_query,
+            team=self.team,
+            placeholders=placeholders,
+        )
+
+        rows = query_result.results or []
+        document_ids = {row[0] for row in rows}
+        interviews_by_id = {
+            str(i.id): i
+            for i in UserInterview.objects.filter(team_id=self.team_id, id__in=document_ids).only(
+                "id", "interviewee_identifier", "topic_id", "created_at"
+            )
+        }
+
+        results: list[dict[str, Any]] = []
+        for document_id, document_type, content, distance in rows:
+            interview = interviews_by_id.get(document_id)
+            if interview is None:
+                continue
+            results.append(
+                {
+                    "interview_id": interview.id,
+                    "document_type": document_type,
+                    "similarity": max(0.0, 1.0 - float(distance)),
+                    "content_snippet": (content or "")[:SEARCH_CONTENT_SNIPPET_LIMIT],
+                    "interviewee_identifier": interview.interviewee_identifier,
+                    "topic_id": interview.topic_id,
+                    "created_at": interview.created_at,
+                }
+            )
+
+        return response.Response(UserInterviewSearchResultSerializer(results, many=True).data)
 
 
 class UserInterviewTopicSerializer(serializers.ModelSerializer):

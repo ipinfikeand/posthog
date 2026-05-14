@@ -12,6 +12,7 @@ import {
     UserInterviewTopicsListQueryParams,
     UserInterviewTopicsSendInvitesCreateBody,
     UserInterviewTopicsSendInvitesCreateParams,
+    UserInterviewsSearchCreateBody,
 } from '@/generated/user_interviews/api'
 import { withPostHogUrl, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
@@ -175,6 +176,35 @@ const userInterviewTopicsSendInvites = (): ToolBase<
     },
 })
 
+const UserInterviewsSearchSchema = UserInterviewsSearchCreateBody
+
+const userInterviewsSearch = (): ToolBase<typeof UserInterviewsSearchSchema, Schemas.UserInterviewSearchResult[]> => ({
+    name: 'user-interviews-search',
+    schema: UserInterviewsSearchSchema,
+    handler: async (context: Context, params: z.infer<typeof UserInterviewsSearchSchema>) => {
+        const projectId = await context.stateManager.getProjectId()
+        const body: Record<string, unknown> = {}
+        if (params.query !== undefined) {
+            body['query'] = params.query
+        }
+        if (params.document_types !== undefined) {
+            body['document_types'] = params.document_types
+        }
+        if (params.topic_id !== undefined) {
+            body['topic_id'] = params.topic_id
+        }
+        if (params.limit !== undefined) {
+            body['limit'] = params.limit
+        }
+        const result = await context.api.request<Schemas.UserInterviewSearchResult[]>({
+            method: 'POST',
+            path: `/api/environments/${encodeURIComponent(String(projectId))}/user_interviews/search/`,
+            body,
+        })
+        return result
+    },
+})
+
 export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'user-interview-topics-create': userInterviewTopicsCreate,
     'user-interview-topics-generate-links': userInterviewTopicsGenerateLinks,
@@ -182,4 +212,5 @@ export const GENERATED_TOOLS: Record<string, () => ToolBase<ZodObjectAny>> = {
     'user-interview-topics-interviewees-list': userInterviewTopicsIntervieweesList,
     'user-interview-topics-list': userInterviewTopicsList,
     'user-interview-topics-send-invites': userInterviewTopicsSendInvites,
+    'user-interviews-search': userInterviewsSearch,
 }
