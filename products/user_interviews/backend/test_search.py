@@ -257,29 +257,17 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
         placeholders = mock_hogql.call_args.kwargs["placeholders"]
         self.assertEqual(placeholders["limit"].value, 10)
 
-    def test_search_rejects_query_above_max_length(self):
-        long_query = "x" * 2001
-        response = self.client.post(self._url(), {"query": long_query}, content_type="application/json")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_search_rejects_limit_above_max(self):
-        response = self.client.post(
-            self._url(),
-            {"query": "x", "limit": 51},
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_search_rejects_invalid_document_type(self):
-        response = self.client.post(
-            self._url(),
-            {"query": "x", "document_types": ["nonsense"]},
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_search_rejects_missing_query(self):
-        response = self.client.post(self._url(), {}, content_type="application/json")
+    @parameterized.expand(
+        [
+            ("missing_query", {}),
+            ("query_above_max_length", {"query": "x" * 2001}),
+            ("limit_above_max", {"query": "x", "limit": 51}),
+            ("invalid_document_type", {"query": "x", "document_types": ["nonsense"]}),
+            ("empty_document_types_list", {"query": "x", "document_types": []}),
+        ]
+    )
+    def test_search_rejects_invalid_request(self, _name, payload):
+        response = self.client.post(self._url(), payload, content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_search_action_declares_read_scope(self):

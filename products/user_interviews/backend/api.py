@@ -251,9 +251,10 @@ class UserInterviewSearchRequestSerializer(serializers.Serializer):
     document_types = serializers.ListField(
         child=serializers.ChoiceField(choices=list(SEARCH_DOCUMENT_TYPES)),
         required=False,
+        allow_empty=False,
         help_text=(
-            "Which document types to search across. Defaults to both "
-            "`transcript` and `summary`. Pass a subset to restrict the search."
+            "Which document types to search across. Omit to default to both "
+            "`transcript` and `summary`. Pass a non-empty subset to restrict the search."
         ),
     )
     topic_id = serializers.UUIDField(
@@ -410,7 +411,7 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
                 {
                     "interview_id": interview.id,
                     "document_type": document_type,
-                    "similarity": max(0.0, 1.0 - float(distance)),
+                    "similarity": min(1.0, max(0.0, 1.0 - float(distance))),
                     "content_snippet": (live_content or "")[:SEARCH_CONTENT_SNIPPET_LIMIT],
                     "interviewee_identifier": interview.interviewee_identifier,
                     "topic_id": interview.topic_id,
