@@ -154,7 +154,7 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
 
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")
-    def test_search_forwards_topic_id_filter(self, mock_embed, mock_hogql):
+    def test_search_resolves_topic_id_via_current_postgres_linkage(self, mock_embed, mock_hogql):
         mock_embed.return_value = self._embedding_response()
         mock_hogql.return_value = self._hogql_rows([])
 
@@ -165,9 +165,59 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
         )
 
         placeholders = mock_hogql.call_args.kwargs["placeholders"]
-        self.assertEqual(placeholders["topic_id"].value, str(self.topic.id))
+        # Both seeded interviews are currently linked to the topic; the search WHERE clause
+        # is built from that *current* linkage, not from the embedding-time metadata snapshot.
+        self.assertEqual(
+            set(placeholders["scoped_document_ids"].value),
+            {str(self.interview_a.id), str(self.interview_b.id)},
+        )
         hogql_query = mock_hogql.call_args.kwargs["query"]
-        self.assertIn("JSONExtractString(metadata, 'topic_id')", hogql_query)
+        self.assertIn("document_id IN {scoped_document_ids}", hogql_query)
+        self.assertNotIn("JSONExtractString(metadata, 'topic_id')", hogql_query)
+
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch("products.user_interviews.backend.api.generate_embedding")
+    def test_search_excludes_interviews_detached_from_topic(self, mock_embed, mock_hogql):
+        mock_embed.return_value = self._embedding_response()
+        mock_hogql.return_value = self._hogql_rows([])
+        # Detach interview_b from the topic — its embedding row still names topic in metadata,
+        # but the Postgres linkage is gone, so it must NOT appear in the scoped id set.
+        self.interview_b.topic = None
+        self.interview_b.save(update_fields=["topic"])
+
+        self.client.post(
+            self._url(),
+            {"query": "x", "topic_id": str(self.topic.id)},
+            content_type="application/json",
+        )
+
+        placeholders = mock_hogql.call_args.kwargs["placeholders"]
+        self.assertEqual(set(placeholders["scoped_document_ids"].value), {str(self.interview_a.id)})
+
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch("products.user_interviews.backend.api.generate_embedding")
+    def test_search_short_circuits_when_topic_has_no_interviews(self, mock_embed, mock_hogql):
+        mock_embed.return_value = self._embedding_response()
+        # No call to HogQL should happen when the topic resolves to zero interview IDs.
+        empty_topic = UserInterviewTopic.objects.create(
+            team=self.team,
+            created_by=self.user,
+            interviewee_emails=["nobody@example.com"],
+            topic="No interviews yet",
+            agent_context="",
+            questions=[],
+        )
+
+        response = self.client.post(
+            self._url(),
+            {"query": "x", "topic_id": str(empty_topic.id)},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json(), [])
+        mock_hogql.assert_not_called()
+        mock_embed.assert_not_called()
 
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")
@@ -215,6 +265,11 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
     def test_search_rejects_missing_query(self):
         response = self.client.post(self._url(), {}, content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_search_action_declares_read_scope(self):
+        from products.user_interviews.backend.api import UserInterviewViewSet
+
+        self.assertEqual(UserInterviewViewSet.search.kwargs["required_scopes"], ["user_interview:read"])
 
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")

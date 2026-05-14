@@ -321,13 +321,34 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             "in natural language, without exact keyword matches."
         ),
     )
-    @action(detail=False, methods=["post"], url_path="search", pagination_class=None)
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="search",
+        pagination_class=None,
+        required_scopes=["user_interview:read"],
+    )
     def search(self, request: ValidatedRequest, *args: Any, **kwargs: Any) -> response.Response:
         body = request.validated_data
         query_str: str = body["query"]
         document_types: list[str] = body.get("document_types") or list(SEARCH_DOCUMENT_TYPES)
         topic_id = body.get("topic_id")
         limit: int = body.get("limit") or SEARCH_DEFAULT_LIMIT
+
+        # When a topic_id filter is requested, resolve it via the current Postgres linkage
+        # rather than the embedding-time `metadata.topic_id` — UserInterview.topic is
+        # nullable with on_delete=SET_NULL, so historical metadata can name a topic the
+        # row no longer belongs to.
+        scoped_document_ids: set[str] | None = None
+        if topic_id is not None:
+            scoped_document_ids = {
+                str(pk)
+                for pk in UserInterview.objects.filter(team_id=self.team_id, topic_id=topic_id).values_list(
+                    "id", flat=True
+                )
+            }
+            if not scoped_document_ids:
+                return response.Response(UserInterviewSearchResultSerializer([], many=True).data)
 
         embedding_response = generate_embedding(self.team, query_str, model=SEARCH_EMBEDDING_MODEL)
         query_vector = embedding_response.embedding
@@ -345,9 +366,9 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             "document_types": ast.Constant(value=document_types),
             "limit": ast.Constant(value=limit),
         }
-        if topic_id is not None:
-            where_clauses.append("JSONExtractString(metadata, 'topic_id') = {topic_id}")
-            placeholders["topic_id"] = ast.Constant(value=str(topic_id))
+        if scoped_document_ids is not None:
+            where_clauses.append("document_id IN {scoped_document_ids}")
+            placeholders["scoped_document_ids"] = ast.Constant(value=sorted(scoped_document_ids))
 
         hogql_query = f"""
             SELECT
