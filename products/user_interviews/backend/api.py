@@ -385,13 +385,14 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
 
         where_clauses = [
             "model_name = {model_name}",
-            "product = 'user_interviews'",
+            "product = {product}",
             "team_id = {team_id}",
             "document_type IN {document_types}",
         ]
         placeholders: dict[str, ast.Expr] = {
             "embedding": ast.Constant(value=query_vector),
             "model_name": ast.Constant(value=SEARCH_EMBEDDING_MODEL),
+            "product": ast.Constant(value=Product.USER_INTERVIEWS.value),
             "team_id": ast.Constant(value=self.team_id),
             "document_types": ast.Constant(value=document_types),
             "limit": ast.Constant(value=limit),
