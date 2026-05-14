@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("posthog", "1156_user_integration_sms"),
+        ("posthog", "1157_user_integration_sms"),
     ]
 
     operations = [

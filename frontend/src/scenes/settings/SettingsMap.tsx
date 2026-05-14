@@ -375,7 +375,11 @@ export const SETTINGS_MAP: SettingSection[] = [
                 title: 'Linear (Agent) integration',
                 description:
                     'Install the PostHog AI agent into your Linear workspace so it can be @mentioned on issues and comments.',
-                component: <LinearAgentIntegration />,
+                component: (
+                    <LinearAgentIntegration
+                        next={urls.settings('environment-posthog-code', 'integration-linear-agent')}
+                    />
+                ),
                 keywords: ['linear', 'agent', 'ai', 'mention', 'bot'],
                 flag: 'POSTHOG_BOT_EVERYWHERE',
             },
@@ -1409,7 +1413,7 @@ export const SETTINGS_MAP: SettingSection[] = [
                 title: 'GitHub integration',
                 description: 'Connect GitHub to link issues and pull requests with PostHog insights.',
                 docsUrl: 'https://posthog.com/docs/error-tracking/integrations',
-                component: <GithubIntegration />,
+                component: <GithubIntegration next={urls.settings('environment-integrations', 'integration-github')} />,
                 keywords: ['github', 'git', 'repository', 'issue', 'pr'],
             },
             {
@@ -1417,7 +1421,7 @@ export const SETTINGS_MAP: SettingSection[] = [
                 title: 'Linear integration',
                 description: 'Connect Linear to create and link issues directly from PostHog.',
                 docsUrl: 'https://posthog.com/docs/error-tracking/integrations',
-                component: <LinearIntegration />,
+                component: <LinearIntegration next={urls.settings('environment-integrations', 'integration-linear')} />,
                 keywords: ['linear', 'issue', 'project management', 'task'],
             },
             {

@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("posthog", "1154_userpushtoken"),
+        ("posthog", "1155_sharingconfiguration_interviewee_context"),
     ]
 
     operations = [

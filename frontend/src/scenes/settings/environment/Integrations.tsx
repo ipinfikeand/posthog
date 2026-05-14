@@ -9,7 +9,6 @@ import { TeamMembershipLevel } from 'lib/constants'
 import { integrationsLogic } from 'lib/integrations/integrationsLogic'
 import { IntegrationView } from 'lib/integrations/IntegrationView'
 import { GitLabSetupModal } from 'scenes/integrations/gitlab/GitLabSetupModal'
-import { urls } from 'scenes/urls'
 
 import { IntegrationKind, IntegrationType } from '~/types'
 
@@ -29,28 +28,20 @@ export function GitLabIntegration(): JSX.Element {
     )
 }
 
-const ERROR_TRACKING_INTEGRATIONS_NEXT = urls.settings('environment-error-tracking', 'error-tracking-integrations')
-
-export function LinearIntegration(): JSX.Element {
-    return <OAuthIntegration kind="linear" connectText="Connect workspace" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
+export function LinearIntegration({ next }: { next: string }): JSX.Element {
+    return <OAuthIntegration kind="linear" connectText="Connect workspace" next={next} />
 }
 
-export function LinearAgentIntegration(): JSX.Element {
-    return (
-        <OAuthIntegration
-            kind="linear-agent"
-            connectText="Connect workspace"
-            next={urls.settings('environment-integrations', 'integration-linear-agent')}
-        />
-    )
+export function LinearAgentIntegration({ next }: { next: string }): JSX.Element {
+    return <OAuthIntegration kind="linear-agent" connectText="Connect workspace" next={next} />
 }
 
-export function GithubIntegration(): JSX.Element {
-    return <OAuthIntegration kind="github" connectText="Connect organization" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
+export function GithubIntegration({ next }: { next: string }): JSX.Element {
+    return <OAuthIntegration kind="github" connectText="Connect organization" next={next} />
 }
 
-export function JiraIntegration(): JSX.Element {
-    return <OAuthIntegration kind="jira" connectText="Connect site" next={ERROR_TRACKING_INTEGRATIONS_NEXT} />
+export function JiraIntegration({ next }: { next: string }): JSX.Element {
+    return <OAuthIntegration kind="jira" connectText="Connect site" next={next} />
 }
 
 const OAuthIntegration = ({
