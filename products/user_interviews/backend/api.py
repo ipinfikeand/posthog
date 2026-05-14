@@ -370,11 +370,14 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
             where_clauses.append("document_id IN {scoped_document_ids}")
             placeholders["scoped_document_ids"] = ast.Constant(value=sorted(scoped_document_ids))
 
+        # The embedding row is used only for ranking and routing. The snippet itself is
+        # built from the current Postgres UserInterview field so edits/deletions to the
+        # source content are reflected immediately — otherwise an embedding written before
+        # an edit would leak the previous text via the search endpoint.
         hogql_query = f"""
             SELECT
                 document_id,
                 document_type,
-                content,
                 cosineDistance(embedding, {{embedding}}) AS distance
             FROM document_embeddings
             WHERE {" AND ".join(where_clauses)}
@@ -393,21 +396,22 @@ class UserInterviewViewSet(TeamAndOrgViewSetMixin, viewsets.ModelViewSet):
         interviews_by_id = {
             str(i.id): i
             for i in UserInterview.objects.filter(team_id=self.team_id, id__in=document_ids).only(
-                "id", "interviewee_identifier", "topic_id", "created_at"
+                "id", "interviewee_identifier", "topic_id", "created_at", "transcript", "summary"
             )
         }
 
         results: list[dict[str, Any]] = []
-        for document_id, document_type, content, distance in rows:
+        for document_id, document_type, distance in rows:
             interview = interviews_by_id.get(document_id)
             if interview is None:
                 continue
+            live_content = interview.transcript if document_type == "transcript" else interview.summary
             results.append(
                 {
                     "interview_id": interview.id,
                     "document_type": document_type,
                     "similarity": max(0.0, 1.0 - float(distance)),
-                    "content_snippet": (content or "")[:SEARCH_CONTENT_SNIPPET_LIMIT],
+                    "content_snippet": (live_content or "")[:SEARCH_CONTENT_SNIPPET_LIMIT],
                     "interviewee_identifier": interview.interviewee_identifier,
                     "topic_id": interview.topic_id,
                     "created_at": interview.created_at,

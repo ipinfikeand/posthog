@@ -68,9 +68,9 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
         mock_embed.return_value = self._embedding_response()
         mock_hogql.return_value = self._hogql_rows(
             [
-                (str(self.interview_a.id), "transcript", "alex talked about session replay buffering", 0.12),
-                (str(self.interview_a.id), "summary", "alex finds session replay slow on long sessions", 0.22),
-                (str(self.interview_b.id), "transcript", "bob loves heatmaps but ignores replays", 0.48),
+                (str(self.interview_a.id), "transcript", 0.12),
+                (str(self.interview_a.id), "summary", 0.22),
+                (str(self.interview_b.id), "transcript", 0.48),
             ]
         )
 
@@ -97,17 +97,33 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
     @patch("products.user_interviews.backend.api.generate_embedding")
     def test_search_caps_similarity_at_zero(self, mock_embed, mock_hogql):
         mock_embed.return_value = self._embedding_response()
-        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", "x", 1.4)])
+        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", 1.4)])
         response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.json()[0]["similarity"], 0.0)
 
     @patch("products.user_interviews.backend.api.execute_hogql_query")
     @patch("products.user_interviews.backend.api.generate_embedding")
+    def test_search_snippet_reflects_current_postgres_content(self, mock_embed, mock_hogql):
+        """The snippet must come from the live UserInterview row, not the embedding row's
+        snapshot — otherwise editing or trimming a transcript leaves stale content visible
+        through the search endpoint until the embedding ages out."""
+        mock_embed.return_value = self._embedding_response()
+        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", 0.1)])
+
+        self.interview_a.transcript = "alex's edited transcript: replay is faster now"
+        self.interview_a.save(update_fields=["transcript"])
+
+        response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
+        self.assertEqual(response.json()[0]["content_snippet"], "alex's edited transcript: replay is faster now")
+
+    @patch("products.user_interviews.backend.api.execute_hogql_query")
+    @patch("products.user_interviews.backend.api.generate_embedding")
     def test_search_truncates_long_content_snippet(self, mock_embed, mock_hogql):
         mock_embed.return_value = self._embedding_response()
-        long_content = "x" * 1000
-        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", long_content, 0.1)])
+        self.interview_a.transcript = "x" * 1000
+        self.interview_a.save(update_fields=["transcript"])
+        mock_hogql.return_value = self._hogql_rows([(str(self.interview_a.id), "transcript", 0.1)])
         response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
         self.assertEqual(len(response.json()[0]["content_snippet"]), 500)
 
@@ -118,8 +134,8 @@ class TestUserInterviewSearch(_FeatureFlagEnabledMixin):
         ghost_id = "00000000-0000-0000-0000-000000000000"
         mock_hogql.return_value = self._hogql_rows(
             [
-                (str(self.interview_a.id), "transcript", "kept", 0.1),
-                (ghost_id, "transcript", "orphan", 0.2),
+                (str(self.interview_a.id), "transcript", 0.1),
+                (ghost_id, "transcript", 0.2),
             ]
         )
         response = self.client.post(self._url(), {"query": "x"}, content_type="application/json")
