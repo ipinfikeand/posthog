@@ -1,22 +1,16 @@
 // AUTO-GENERATED from products/signals/mcp/tools.yaml + OpenAPI — do not edit
 import { z } from 'zod'
 
-import type { Schemas } from '@/api/generated'
-import {
-    SignalsReportsListQueryParams,
-    SignalsReportsRetrieveParams,
-    SignalsSourceConfigsListQueryParams,
-    SignalsSourceConfigsRetrieveParams,
-} from '@/generated/signals/api'
-import { withPostHogUrl, pickResponseFields, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
+import { withPostHogUrl, pickResponseFields, type WithPostHogUrl } from '@/tools/tool-utils'
+
+import type { Schemas } from '@/api/generated'
+
+import { SignalsReportsListQueryParams, SignalsReportsRetrieveParams, SignalsSourceConfigsListQueryParams, SignalsSourceConfigsRetrieveParams } from '@/generated/signals/api'
 
 const InboxReportsListSchema = SignalsReportsListQueryParams
 
-const inboxReportsList = (): ToolBase<
-    typeof InboxReportsListSchema,
-    WithPostHogUrl<Schemas.PaginatedSignalReportList>
-> => ({
+const inboxReportsList = (): ToolBase<typeof InboxReportsListSchema, WithPostHogUrl<Schemas.PaginatedSignalReportList>> => ({
     name: 'inbox-reports-list',
     schema: InboxReportsListSchema,
     handler: async (context: Context, params: z.infer<typeof InboxReportsListSchema>) => {
@@ -34,37 +28,11 @@ const inboxReportsList = (): ToolBase<
                 suggested_reviewers: params.suggested_reviewers,
             },
         })
-        const filtered = {
-            ...result,
-            results: (result.results ?? []).map((item: any) =>
-                pickResponseFields(item, [
-                    'id',
-                    'title',
-                    'summary',
-                    'status',
-                    'priority',
-                    'actionability',
-                    'already_addressed',
-                    'signal_count',
-                    'total_weight',
-                    'source_products',
-                    'is_suggested_reviewer',
-                    'implementation_pr_url',
-                    'created_at',
-                    'updated_at',
-                ])
-            ),
-        } as typeof result
-        return await withPostHogUrl(
-            context,
-            {
-                ...filtered,
-                results: await Promise.all(
-                    (filtered.results ?? []).map((item) => withPostHogUrl(context, item, `/inbox/${item.id}`))
-                ),
-            },
-            '/inbox'
-        )
+        const filtered = { ...result, results: (result.results ?? []).map((item: any) => pickResponseFields(item, ['id', 'title', 'summary', 'status', 'priority', 'actionability', 'already_addressed', 'signal_count', 'total_weight', 'source_products', 'is_suggested_reviewer', 'implementation_pr_url', 'created_at', 'updated_at'])) } as typeof result
+        return await withPostHogUrl(context, {
+            ...filtered,
+            results: await Promise.all((filtered.results ?? []).map((item) => withPostHogUrl(context, item, `/inbox/${item.id}`))),
+        }, '/inbox')
     },
 })
 
@@ -85,10 +53,7 @@ const inboxReportsRetrieve = (): ToolBase<typeof InboxReportsRetrieveSchema, Wit
 
 const InboxSourceConfigsListSchema = SignalsSourceConfigsListQueryParams
 
-const inboxSourceConfigsList = (): ToolBase<
-    typeof InboxSourceConfigsListSchema,
-    WithPostHogUrl<Schemas.PaginatedSignalSourceConfigList>
-> => ({
+const inboxSourceConfigsList = (): ToolBase<typeof InboxSourceConfigsListSchema, WithPostHogUrl<Schemas.PaginatedSignalSourceConfigList>> => ({
     name: 'inbox-source-configs-list',
     schema: InboxSourceConfigsListSchema,
     handler: async (context: Context, params: z.infer<typeof InboxSourceConfigsListSchema>) => {
@@ -101,30 +66,14 @@ const inboxSourceConfigsList = (): ToolBase<
                 offset: params.offset,
             },
         })
-        const filtered = {
-            ...result,
-            results: (result.results ?? []).map((item: any) =>
-                pickResponseFields(item, [
-                    'id',
-                    'source_product',
-                    'source_type',
-                    'enabled',
-                    'status',
-                    'created_at',
-                    'updated_at',
-                ])
-            ),
-        } as typeof result
+        const filtered = { ...result, results: (result.results ?? []).map((item: any) => pickResponseFields(item, ['id', 'source_product', 'source_type', 'enabled', 'status', 'created_at', 'updated_at'])) } as typeof result
         return await withPostHogUrl(context, filtered, '/inbox')
     },
 })
 
 const InboxSourceConfigsRetrieveSchema = SignalsSourceConfigsRetrieveParams.omit({ project_id: true })
 
-const inboxSourceConfigsRetrieve = (): ToolBase<
-    typeof InboxSourceConfigsRetrieveSchema,
-    Schemas.SignalSourceConfig
-> => ({
+const inboxSourceConfigsRetrieve = (): ToolBase<typeof InboxSourceConfigsRetrieveSchema, Schemas.SignalSourceConfig> => ({
     name: 'inbox-source-configs-retrieve',
     schema: InboxSourceConfigsRetrieveSchema,
     handler: async (context: Context, params: z.infer<typeof InboxSourceConfigsRetrieveSchema>) => {

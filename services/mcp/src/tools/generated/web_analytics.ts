@@ -1,9 +1,11 @@
 // AUTO-GENERATED from products/web_analytics/mcp/tools.yaml + OpenAPI — do not edit
 import { z } from 'zod'
 
-import type { Schemas } from '@/api/generated'
-import { WebAnalyticsWeeklyDigestQueryParams } from '@/generated/web_analytics/api'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
+
+import type { Schemas } from '@/api/generated'
+
+import { WebAnalyticsWeeklyDigestQueryParams } from '@/generated/web_analytics/api'
 
 const WebAnalyticsWeeklyDigestSchema = WebAnalyticsWeeklyDigestQueryParams
 

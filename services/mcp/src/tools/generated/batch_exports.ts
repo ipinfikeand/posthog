@@ -1,17 +1,12 @@
 // AUTO-GENERATED from products/batch_exports/mcp/tools.yaml + OpenAPI — do not edit
 import { z } from 'zod'
 
-import type { Schemas } from '@/api/generated'
-import {
-    BatchExportsCreateBody,
-    BatchExportsDestroyParams,
-    BatchExportsListQueryParams,
-    BatchExportsPartialUpdateBody,
-    BatchExportsPartialUpdateParams,
-    BatchExportsRetrieveParams,
-} from '@/generated/batch_exports/api'
-import { withPostHogUrl, pickResponseFields, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
+import { withPostHogUrl, pickResponseFields, type WithPostHogUrl } from '@/tools/tool-utils'
+
+import type { Schemas } from '@/api/generated'
+
+import { BatchExportsCreateBody, BatchExportsDestroyParams, BatchExportsListQueryParams, BatchExportsPartialUpdateBody, BatchExportsPartialUpdateParams, BatchExportsRetrieveParams } from '@/generated/batch_exports/api'
 
 const BatchExportCreateSchema = BatchExportsCreateBody
 
@@ -21,30 +16,14 @@ const batchExportCreate = (): ToolBase<typeof BatchExportCreateSchema, Schemas.B
     handler: async (context: Context, params: z.infer<typeof BatchExportCreateSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const body: Record<string, unknown> = {}
-        if (params.name !== undefined) {
-            body['name'] = params.name
-        }
-        if (params.model !== undefined) {
-            body['model'] = params.model
-        }
-        if (params.destination !== undefined) {
-            body['destination'] = params.destination
-        }
-        if (params.interval !== undefined) {
-            body['interval'] = params.interval
-        }
-        if (params.paused !== undefined) {
-            body['paused'] = params.paused
-        }
-        if (params.timezone !== undefined) {
-            body['timezone'] = params.timezone
-        }
-        if (params.offset_day !== undefined) {
-            body['offset_day'] = params.offset_day
-        }
-        if (params.offset_hour !== undefined) {
-            body['offset_hour'] = params.offset_hour
-        }
+        if (params.name !== undefined) {body["name"] = params.name}
+        if (params.model !== undefined) {body["model"] = params.model}
+        if (params.destination !== undefined) {body["destination"] = params.destination}
+        if (params.interval !== undefined) {body["interval"] = params.interval}
+        if (params.paused !== undefined) {body["paused"] = params.paused}
+        if (params.timezone !== undefined) {body["timezone"] = params.timezone}
+        if (params.offset_day !== undefined) {body["offset_day"] = params.offset_day}
+        if (params.offset_hour !== undefined) {body["offset_hour"] = params.offset_hour}
         const result = await context.api.request<Schemas.BatchExport>({
             method: 'POST',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/`,
@@ -84,9 +63,7 @@ const batchExportGet = (): ToolBase<typeof BatchExportGetSchema, Schemas.BatchEx
     },
 })
 
-const BatchExportUpdateSchema = BatchExportsPartialUpdateParams.omit({ project_id: true }).extend(
-    BatchExportsPartialUpdateBody.shape
-)
+const BatchExportUpdateSchema = BatchExportsPartialUpdateParams.omit({ project_id: true }).extend(BatchExportsPartialUpdateBody.shape)
 
 const batchExportUpdate = (): ToolBase<typeof BatchExportUpdateSchema, Schemas.BatchExport> => ({
     name: 'batch-export-update',
@@ -94,30 +71,14 @@ const batchExportUpdate = (): ToolBase<typeof BatchExportUpdateSchema, Schemas.B
     handler: async (context: Context, params: z.infer<typeof BatchExportUpdateSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const body: Record<string, unknown> = {}
-        if (params.name !== undefined) {
-            body['name'] = params.name
-        }
-        if (params.model !== undefined) {
-            body['model'] = params.model
-        }
-        if (params.destination !== undefined) {
-            body['destination'] = params.destination
-        }
-        if (params.interval !== undefined) {
-            body['interval'] = params.interval
-        }
-        if (params.paused !== undefined) {
-            body['paused'] = params.paused
-        }
-        if (params.timezone !== undefined) {
-            body['timezone'] = params.timezone
-        }
-        if (params.offset_day !== undefined) {
-            body['offset_day'] = params.offset_day
-        }
-        if (params.offset_hour !== undefined) {
-            body['offset_hour'] = params.offset_hour
-        }
+        if (params.name !== undefined) {body["name"] = params.name}
+        if (params.model !== undefined) {body["model"] = params.model}
+        if (params.destination !== undefined) {body["destination"] = params.destination}
+        if (params.interval !== undefined) {body["interval"] = params.interval}
+        if (params.paused !== undefined) {body["paused"] = params.paused}
+        if (params.timezone !== undefined) {body["timezone"] = params.timezone}
+        if (params.offset_day !== undefined) {body["offset_day"] = params.offset_day}
+        if (params.offset_hour !== undefined) {body["offset_hour"] = params.offset_hour}
         const result = await context.api.request<Schemas.BatchExport>({
             method: 'PATCH',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/batch_exports/${encodeURIComponent(String(params.id))}/`,
@@ -129,10 +90,7 @@ const batchExportUpdate = (): ToolBase<typeof BatchExportUpdateSchema, Schemas.B
 
 const BatchExportsListSchema = BatchExportsListQueryParams
 
-const batchExportsList = (): ToolBase<
-    typeof BatchExportsListSchema,
-    WithPostHogUrl<Schemas.PaginatedBatchExportList>
-> => ({
+const batchExportsList = (): ToolBase<typeof BatchExportsListSchema, WithPostHogUrl<Schemas.PaginatedBatchExportList>> => ({
     name: 'batch-exports-list',
     schema: BatchExportsListSchema,
     handler: async (context: Context, params: z.infer<typeof BatchExportsListSchema>) => {
@@ -145,23 +103,7 @@ const batchExportsList = (): ToolBase<
                 offset: params.offset,
             },
         })
-        const filtered = {
-            ...result,
-            results: (result.results ?? []).map((item: any) =>
-                pickResponseFields(item, [
-                    'id',
-                    'name',
-                    'model',
-                    'destination',
-                    'interval',
-                    'paused',
-                    'created_at',
-                    'last_updated_at',
-                    'start_at',
-                    'end_at',
-                ])
-            ),
-        } as typeof result
+        const filtered = { ...result, results: (result.results ?? []).map((item: any) => pickResponseFields(item, ['id', 'name', 'model', 'destination', 'interval', 'paused', 'created_at', 'last_updated_at', 'start_at', 'end_at'])) } as typeof result
         return await withPostHogUrl(context, filtered, '/data-pipelines/destinations')
     },
 })

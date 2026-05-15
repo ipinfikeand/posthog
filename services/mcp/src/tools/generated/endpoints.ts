@@ -1,32 +1,14 @@
 // AUTO-GENERATED from products/endpoints/mcp/tools.yaml + OpenAPI — do not edit
 import { z } from 'zod'
 
-import type { Schemas } from '@/api/generated'
-import {
-    EndpointsCreateBody,
-    EndpointsDestroyParams,
-    EndpointsListQueryParams,
-    EndpointsMaterializationStatusRetrieveParams,
-    EndpointsOpenapiJsonRetrieveParams,
-    EndpointsOpenapiJsonRetrieveQueryParams,
-    EndpointsPartialUpdateBody,
-    EndpointsPartialUpdateParams,
-    EndpointsRetrieveParams,
-    EndpointsRunCreateBody,
-    EndpointsRunCreateParams,
-    EndpointsVersionsListParams,
-    EndpointsVersionsListQueryParams,
-} from '@/generated/endpoints/api'
-import { withPostHogUrl, type WithPostHogUrl } from '@/tools/tool-utils'
 import type { Context, ToolBase, ZodObjectAny } from '@/tools/types'
+import { withPostHogUrl, type WithPostHogUrl } from '@/tools/tool-utils'
 
-const EndpointCreateSchema = EndpointsCreateBody.omit({
-    is_active: true,
-    derived_from_insight: true,
-    version: true,
-    bucket_overrides: true,
-    deleted: true,
-})
+import type { Schemas } from '@/api/generated'
+
+import { EndpointsCreateBody, EndpointsDestroyParams, EndpointsListQueryParams, EndpointsMaterializationStatusRetrieveParams, EndpointsOpenapiJsonRetrieveParams, EndpointsOpenapiJsonRetrieveQueryParams, EndpointsPartialUpdateBody, EndpointsPartialUpdateParams, EndpointsRetrieveParams, EndpointsRunCreateBody, EndpointsRunCreateParams, EndpointsVersionsListParams, EndpointsVersionsListQueryParams } from '@/generated/endpoints/api'
+
+const EndpointCreateSchema = EndpointsCreateBody.omit({ 'is_active': true, 'derived_from_insight': true, 'version': true, 'bucket_overrides': true, 'deleted': true })
 
 const endpointCreate = (): ToolBase<typeof EndpointCreateSchema, WithPostHogUrl<Schemas.EndpointResponse>> => ({
     name: 'endpoint-create',
@@ -34,21 +16,11 @@ const endpointCreate = (): ToolBase<typeof EndpointCreateSchema, WithPostHogUrl<
     handler: async (context: Context, params: z.infer<typeof EndpointCreateSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const body: Record<string, unknown> = {}
-        if (params.name !== undefined) {
-            body['name'] = params.name
-        }
-        if (params.query !== undefined) {
-            body['query'] = params.query
-        }
-        if (params.description !== undefined) {
-            body['description'] = params.description
-        }
-        if (params.data_freshness_seconds !== undefined) {
-            body['data_freshness_seconds'] = params.data_freshness_seconds
-        }
-        if (params.is_materialized !== undefined) {
-            body['is_materialized'] = params.is_materialized
-        }
+        if (params.name !== undefined) {body["name"] = params.name}
+        if (params.query !== undefined) {body["query"] = params.query}
+        if (params.description !== undefined) {body["description"] = params.description}
+        if (params.data_freshness_seconds !== undefined) {body["data_freshness_seconds"] = params.data_freshness_seconds}
+        if (params.is_materialized !== undefined) {body["is_materialized"] = params.is_materialized}
         const result = await context.api.request<Schemas.EndpointResponse>({
             method: 'POST',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/endpoints/`,
@@ -91,10 +63,7 @@ const endpointGet = (): ToolBase<typeof EndpointGetSchema, WithPostHogUrl<Schema
 
 const EndpointMaterializationStatusSchema = EndpointsMaterializationStatusRetrieveParams.omit({ project_id: true })
 
-const endpointMaterializationStatus = (): ToolBase<
-    typeof EndpointMaterializationStatusSchema,
-    WithPostHogUrl<Schemas.EndpointMaterialization>
-> => ({
+const endpointMaterializationStatus = (): ToolBase<typeof EndpointMaterializationStatusSchema, WithPostHogUrl<Schemas.EndpointMaterialization>> => ({
     name: 'endpoint-materialization-status',
     schema: EndpointMaterializationStatusSchema,
     handler: async (context: Context, params: z.infer<typeof EndpointMaterializationStatusSchema>) => {
@@ -107,9 +76,7 @@ const endpointMaterializationStatus = (): ToolBase<
     },
 })
 
-const EndpointOpenapiSpecSchema = EndpointsOpenapiJsonRetrieveParams.omit({ project_id: true }).extend(
-    EndpointsOpenapiJsonRetrieveQueryParams.shape
-)
+const EndpointOpenapiSpecSchema = EndpointsOpenapiJsonRetrieveParams.omit({ project_id: true }).extend(EndpointsOpenapiJsonRetrieveQueryParams.shape)
 
 const endpointOpenapiSpec = (): ToolBase<typeof EndpointOpenapiSpecSchema, unknown> => ({
     name: 'endpoint-openapi-spec',
@@ -127,15 +94,7 @@ const endpointOpenapiSpec = (): ToolBase<typeof EndpointOpenapiSpecSchema, unkno
     },
 })
 
-const EndpointRunSchema = EndpointsRunCreateParams.omit({ project_id: true })
-    .extend(
-        EndpointsRunCreateBody.omit({ client_query_id: true, debug: true, filters_override: true, version: true }).shape
-    )
-    .extend({
-        variables: EndpointsRunCreateBody.shape['variables'].describe(
-            'Key-value pairs to parameterize the query. For HogQL endpoints, keys match variable code_name (e.g. {"event_name": "$pageview"}). For insight endpoints with breakdowns, use the breakdown property name as key.'
-        ),
-    })
+const EndpointRunSchema = (EndpointsRunCreateParams.omit({ project_id: true }).extend(EndpointsRunCreateBody.omit({ 'client_query_id': true, 'debug': true, 'filters_override': true, 'version': true }).shape)).extend({ variables: EndpointsRunCreateBody.shape['variables'].describe('Key-value pairs to parameterize the query. For HogQL endpoints, keys match variable code_name (e.g. {"event_name": "$pageview"}). For insight endpoints with breakdowns, use the breakdown property name as key.') })
 
 const endpointRun = (): ToolBase<typeof EndpointRunSchema, WithPostHogUrl<Schemas.EndpointRunResponse>> => ({
     name: 'endpoint-run',
@@ -143,18 +102,10 @@ const endpointRun = (): ToolBase<typeof EndpointRunSchema, WithPostHogUrl<Schema
     handler: async (context: Context, params: z.infer<typeof EndpointRunSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const body: Record<string, unknown> = {}
-        if (params.limit !== undefined) {
-            body['limit'] = params.limit
-        }
-        if (params.offset !== undefined) {
-            body['offset'] = params.offset
-        }
-        if (params.refresh !== undefined) {
-            body['refresh'] = params.refresh
-        }
-        if (params.variables !== undefined) {
-            body['variables'] = params.variables
-        }
+        if (params.limit !== undefined) {body["limit"] = params.limit}
+        if (params.offset !== undefined) {body["offset"] = params.offset}
+        if (params.refresh !== undefined) {body["refresh"] = params.refresh}
+        if (params.variables !== undefined) {body["variables"] = params.variables}
         const result = await context.api.request<Schemas.EndpointRunResponse>({
             method: 'POST',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/endpoints/${encodeURIComponent(String(params.name))}/run/`,
@@ -164,10 +115,7 @@ const endpointRun = (): ToolBase<typeof EndpointRunSchema, WithPostHogUrl<Schema
     },
 })
 
-const EndpointUpdateSchema = EndpointsPartialUpdateParams.omit({ project_id: true }).extend(
-    EndpointsPartialUpdateBody.omit({ name: true, derived_from_insight: true, bucket_overrides: true, deleted: true })
-        .shape
-)
+const EndpointUpdateSchema = EndpointsPartialUpdateParams.omit({ project_id: true }).extend(EndpointsPartialUpdateBody.omit({ 'name': true, 'derived_from_insight': true, 'bucket_overrides': true, 'deleted': true }).shape)
 
 const endpointUpdate = (): ToolBase<typeof EndpointUpdateSchema, WithPostHogUrl<Schemas.EndpointResponse>> => ({
     name: 'endpoint-update',
@@ -175,24 +123,12 @@ const endpointUpdate = (): ToolBase<typeof EndpointUpdateSchema, WithPostHogUrl<
     handler: async (context: Context, params: z.infer<typeof EndpointUpdateSchema>) => {
         const projectId = await context.stateManager.getProjectId()
         const body: Record<string, unknown> = {}
-        if (params.query !== undefined) {
-            body['query'] = params.query
-        }
-        if (params.description !== undefined) {
-            body['description'] = params.description
-        }
-        if (params.data_freshness_seconds !== undefined) {
-            body['data_freshness_seconds'] = params.data_freshness_seconds
-        }
-        if (params.is_active !== undefined) {
-            body['is_active'] = params.is_active
-        }
-        if (params.is_materialized !== undefined) {
-            body['is_materialized'] = params.is_materialized
-        }
-        if (params.version !== undefined) {
-            body['version'] = params.version
-        }
+        if (params.query !== undefined) {body["query"] = params.query}
+        if (params.description !== undefined) {body["description"] = params.description}
+        if (params.data_freshness_seconds !== undefined) {body["data_freshness_seconds"] = params.data_freshness_seconds}
+        if (params.is_active !== undefined) {body["is_active"] = params.is_active}
+        if (params.is_materialized !== undefined) {body["is_materialized"] = params.is_materialized}
+        if (params.version !== undefined) {body["version"] = params.version}
         const result = await context.api.request<Schemas.EndpointResponse>({
             method: 'PATCH',
             path: `/api/projects/${encodeURIComponent(String(projectId))}/endpoints/${encodeURIComponent(String(params.name))}/`,
@@ -202,14 +138,9 @@ const endpointUpdate = (): ToolBase<typeof EndpointUpdateSchema, WithPostHogUrl<
     },
 })
 
-const EndpointVersionsSchema = EndpointsVersionsListParams.omit({ project_id: true }).extend(
-    EndpointsVersionsListQueryParams.shape
-)
+const EndpointVersionsSchema = EndpointsVersionsListParams.omit({ project_id: true }).extend(EndpointsVersionsListQueryParams.shape)
 
-const endpointVersions = (): ToolBase<
-    typeof EndpointVersionsSchema,
-    WithPostHogUrl<Schemas.PaginatedEndpointVersionResponseList>
-> => ({
+const endpointVersions = (): ToolBase<typeof EndpointVersionsSchema, WithPostHogUrl<Schemas.PaginatedEndpointVersionResponseList>> => ({
     name: 'endpoint-versions',
     schema: EndpointVersionsSchema,
     handler: async (context: Context, params: z.infer<typeof EndpointVersionsSchema>) => {
@@ -224,25 +155,16 @@ const endpointVersions = (): ToolBase<
                 offset: params.offset,
             },
         })
-        return await withPostHogUrl(
-            context,
-            {
-                ...result,
-                results: await Promise.all(
-                    (result.results ?? []).map((item) => withPostHogUrl(context, item, `/endpoints/${item.name}`))
-                ),
-            },
-            '/endpoints'
-        )
+        return await withPostHogUrl(context, {
+            ...result,
+            results: await Promise.all((result.results ?? []).map((item) => withPostHogUrl(context, item, `/endpoints/${item.name}`))),
+        }, '/endpoints')
     },
 })
 
 const EndpointsGetAllSchema = EndpointsListQueryParams
 
-const endpointsGetAll = (): ToolBase<
-    typeof EndpointsGetAllSchema,
-    WithPostHogUrl<Schemas.PaginatedEndpointResponseList>
-> => ({
+const endpointsGetAll = (): ToolBase<typeof EndpointsGetAllSchema, WithPostHogUrl<Schemas.PaginatedEndpointResponseList>> => ({
     name: 'endpoints-get-all',
     schema: EndpointsGetAllSchema,
     handler: async (context: Context, params: z.infer<typeof EndpointsGetAllSchema>) => {
@@ -257,16 +179,10 @@ const endpointsGetAll = (): ToolBase<
                 offset: params.offset,
             },
         })
-        return await withPostHogUrl(
-            context,
-            {
-                ...result,
-                results: await Promise.all(
-                    (result.results ?? []).map((item) => withPostHogUrl(context, item, `/endpoints/${item.name}`))
-                ),
-            },
-            '/endpoints'
-        )
+        return await withPostHogUrl(context, {
+            ...result,
+            results: await Promise.all((result.results ?? []).map((item) => withPostHogUrl(context, item, `/endpoints/${item.name}`))),
+        }, '/endpoints')
     },
 })
 
