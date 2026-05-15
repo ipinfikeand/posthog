@@ -135,6 +135,103 @@ class TestUserInterviewTopicCreate(_FeatureFlagEnabledMixin):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.content)
 
 
+class TestUserInterviewTopicEdit(_FeatureFlagEnabledMixin):
+    def _topic(self, **overrides) -> UserInterviewTopic:
+        defaults: dict = {
+            "team": self.team,
+            "created_by": self.user,
+            "interviewee_emails": ["alex@example.com"],
+            "interviewee_distinct_ids": ["distinct-abc"],
+            "topic": "Adoption",
+            "agent_context": "ctx",
+            "questions": ["q1"],
+        }
+        defaults.update(overrides)
+        return UserInterviewTopic.objects.create(**defaults)
+
+    def _detail_url(self, topic_id: str) -> str:
+        return f"/api/environments/{self.team.id}/user_interview_topics/{topic_id}/"
+
+    def _add_url(self, topic_id: str) -> str:
+        return f"{self._detail_url(topic_id)}add_interviewee/"
+
+    def _remove_url(self, topic_id: str) -> str:
+        return f"{self._detail_url(topic_id)}remove_interviewee/"
+
+    @parameterized.expand(
+        [
+            ("plain_email", "jordan@example.com", "interviewee_emails"),
+            ("display_name_email", "Jordan Doe <jordan@example.com>", "interviewee_emails"),
+            ("distinct_id", "distinct-xyz", "interviewee_distinct_ids"),
+        ]
+    )
+    def test_add_interviewee_routes_to_correct_array(self, _name: str, identifier: str, expected_field: str):
+        topic = self._topic()
+        response = self.client.post(self._add_url(str(topic.id)), data={"identifier": identifier}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        topic.refresh_from_db()
+        assert identifier in getattr(topic, expected_field), (identifier, expected_field, response.json())
+
+    def test_add_interviewee_is_idempotent(self):
+        topic = self._topic(interviewee_emails=["alex@example.com"])
+        self.client.post(self._add_url(str(topic.id)), data={"identifier": "alex@example.com"}, format="json")
+        self.client.post(self._add_url(str(topic.id)), data={"identifier": "alex@example.com"}, format="json")
+        topic.refresh_from_db()
+        assert topic.interviewee_emails == ["alex@example.com"], topic.interviewee_emails
+
+    def test_remove_interviewee_drops_from_both_arrays(self):
+        topic = self._topic(
+            interviewee_emails=["alex@example.com", "jordan@example.com"],
+            interviewee_distinct_ids=["distinct-abc"],
+        )
+        response = self.client.post(
+            self._remove_url(str(topic.id)), data={"identifier": "alex@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        topic.refresh_from_db()
+        assert topic.interviewee_emails == ["jordan@example.com"], topic.interviewee_emails
+        assert topic.interviewee_distinct_ids == ["distinct-abc"], topic.interviewee_distinct_ids
+
+    def test_remove_interviewee_disables_active_sharing_configurations(self):
+        topic = self._topic()
+        ic = IntervieweeContext.objects.create(
+            team=self.team,
+            topic=topic,
+            interviewee_identifier="alex@example.com",
+            agent_context="",
+            created_by=self.user,
+        )
+        share = SharingConfiguration.objects.create(team=self.team, interviewee_context=ic, enabled=True)
+        self.client.post(self._remove_url(str(topic.id)), data={"identifier": "alex@example.com"}, format="json")
+        share.refresh_from_db()
+        assert share.enabled is False
+
+    def test_remove_interviewee_is_noop_for_unknown_identifier(self):
+        topic = self._topic()
+        response = self.client.post(
+            self._remove_url(str(topic.id)), data={"identifier": "ghost@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        topic.refresh_from_db()
+        assert topic.interviewee_emails == ["alex@example.com"], topic.interviewee_emails
+
+    def test_partial_update_changes_topic_text(self):
+        topic = self._topic()
+        response = self.client.patch(self._detail_url(str(topic.id)), data={"topic": "New angle"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        topic.refresh_from_db()
+        assert topic.topic == "New angle"
+
+    def test_partial_update_rejects_clearing_all_targeting(self):
+        topic = self._topic()
+        response = self.client.patch(
+            self._detail_url(str(topic.id)),
+            data={"interviewee_emails": [], "interviewee_distinct_ids": []},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 class TestInterviewPublicViewer(APIBaseTest):
     def _create_share(self) -> SharingConfiguration:
         topic = UserInterviewTopic.objects.create(
